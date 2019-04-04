@@ -1,0 +1,10 @@
+(executable
+  ; the for the library is automatically detected because of the name, but we
+  ; need to explicitly specify the package here
+  (package graphql-reason)
+  (name RunTests)
+  (public_name RunTests.exe)
+  (libraries
+    graphql-reason.lib
+  )
+)
