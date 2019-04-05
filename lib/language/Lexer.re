@@ -108,6 +108,17 @@ let unexpectedCharacterMessage = code => {
   "";
 };
 
+/**
+ * NOTE: port of JavaScript char.charCodeAt(position)
+ */
+let getCode = (text, pos) => int_of_char(String.get(text, pos));
+/**
+ * Gets the next token from the source starting at the given position.
+ *
+ * This skips over whitespace until it finds the next lexable token, then lexes
+ * punctuators immediately or calls the appropriate helper function for more
+ * complicated tokens.
+ */
 let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
   let source = lexer.source;
   let body = source.body;
@@ -120,7 +131,7 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
   switch(pos >= bodyLength) {
   | true => Token.make(Token.EOF, bodyLength, bodyLength, line, col, Some(prev), None);
   | false => {
-    let code = int_of_char(String.get(body, pos));
+    let code = getCode(body, pos);
 
     switch(code) {
     // !
@@ -136,7 +147,12 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
     // )
     | 41 => Token.make(Token.ParenRight, pos, pos + 1, line, col, Some(prev), None);
     // .
-    //| 46 => if (body.charCodeAt(pos + 1) === 46 && body.charCodeAt(pos + 2) === 46) { Token.make(Token.SPREAD, pos, pos + 3, line, col, Some(prev), None);}
+    | 46 => {
+      switch(pos + 2 < bodyLength && getCode(body, pos + 1) == 46 && getCode(body, pos + 2) == 46) {
+      | true => Token.make(Token.Spread, pos, pos + 3, line, col, Some(prev), None)
+      | false => Error.API.syntaxError(source, pos, "Not enough dots for spread.")
+      }
+    }
     // : 
     | 58 => Token.make(Token.Colon, pos, pos + 1, line, col, Some(prev), None);
     // =
