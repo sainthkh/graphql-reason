@@ -1,0 +1,8 @@
+(library
+  (name Language)
+  (public_name graphql-reason.language)
+  (libraries
+    graphql-reason.error
+    graphql-reason.type
+    graphql-reason.util
+  ))

@@ -1,1 +1,1 @@
-GraphqlReason.TestFramework.cli()
+Test.Framework.cli()

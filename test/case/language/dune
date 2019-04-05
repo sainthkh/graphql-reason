@@ -1,0 +1,17 @@
+(library
+  (name TestLanguage)
+  (public_name graphql-reason.test-language)
+  ; the linkall flag ensures that all of our tests are compiled and the
+  ; -g flag emits debugging information
+  (ocamlopt_flags -linkall -g)
+  ; you will want to depend on the library you are testing as well, however for
+  ; the purposes of this example we are only depending on the test runner itself
+  (libraries 
+    graphql-reason.test-framework
+    graphql-reason.language
+    graphql-reason.type
+    graphql-reason.util
+    console.lib
+  )
+)
+

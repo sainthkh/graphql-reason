@@ -5,6 +5,6 @@
   (name RunTests)
   (public_name RunTests.exe)
   (libraries
-    graphql-reason.lib
+    graphql-reason.test-language
   )
 )

@@ -1,0 +1,6 @@
+(library
+  (name Type)
+  (public_name graphql-reason.type)
+  (libraries
+    graphql-reason.util
+  ))
