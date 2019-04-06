@@ -6,18 +6,6 @@
  */
 type t = {
   /**
-   * An array of { line, column } locations within the source GraphQL document
-   * which correspond to this error.
-   *
-   * Errors during validation often contain multiple locations, for example to
-   * point out two things with the same name. Errors during execution include a
-   * single location, the field which produced the error.
-   *
-   * Enumerable, and appears in the result of JSON.stringify().
-   */
-  // locations: option(array(Language.Source.location)),
-
-  /**
    * An array describing the JSON-path into the execution response which
    * corresponds to this error. Only included for errors during execution.
    *
@@ -66,20 +54,38 @@ type t = {
    *
    * Note: should be treated as readonly, despite invariant usage.
    */
-  message: string,  
+  message: string,
+
+  /**
+   * An array of { line, column } locations within the source GraphQL document
+   * which correspond to this error.
+   *
+   * Errors during validation often contain multiple locations, for example to
+   * point out two things with the same name. Errors during execution include a
+   * single location, the field which produced the error.
+   *
+   * Enumerable, and appears in the result of JSON.stringify().
+   */
+  locations: option(array(Util.Source.location)),
 };
 
 let make = (
-  message: string//,
+  message: string,
   // Commented them out for later implementation
   // ~nodes: option(array(Type.Ast.node)) =?,
-  // ~source: option(Source.t) =?,
-  // ~positions: option(array(int)) =?,
+  ~source: option(Util.Source.t) =?,
+  ~positions: option(array(int)) =?,
   // path: option(array(string)) =?,
   // Skipping originalError and extensions.
-  //()
+  ()
 ) : t => {
   message: message, 
+  locations: switch(source, positions) {
+  | (Some(source), Some(positions)) => {
+    Some(Array.map(position => Util.Source.getLocation(source, position), positions));
+  }
+  | (_, _) => None
+  },
 };
 
 exception Exception(t);

@@ -9,6 +9,7 @@
   (libraries 
     graphql-reason.test-framework
     graphql-reason.language
+    graphql-reason.error
     graphql-reason.type
     graphql-reason.util
     console.lib
