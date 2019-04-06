@@ -123,6 +123,37 @@ describe("Lexer", ({describe, test}) => {
       expect.bool(matchOptions(result.value, expected.value)).toBe(true);
     });
   };
+
+  describe("skips whitespace and comments", ({test}) => {
+    compare({|
+
+    foo
+
+
+|}, {
+      kind: Type.Token.Name,
+      start: 6,
+      end_: 9,
+      value: Some("foo"),
+    });
+
+    compare({|
+    #comment
+    foo#comment
+|}, {
+      kind: Type.Token.Name,
+      start: 18,
+      end_: 21,
+      value: Some("foo"),
+    });
+
+    compare(",,,foo,,,", {
+      kind: Type.Token.Name,
+      start: 3,
+      end_: 6,
+      value: Some("foo"),
+    });
+  });
   
   describe("lexes numbers", ({test}) => {
     compare("4", {

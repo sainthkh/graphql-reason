@@ -141,6 +141,49 @@ let unexpectedCharacterMessage = code => {
  * NOTE: port of JavaScript char.charCodeAt(position)
  */
 let getCode = (text, pos) => int_of_char(String.get(text, pos));
+let sliceString = (text, start, end_) => String.sub(text, start, end_ - start);
+
+/**
+ * Reads a comment token from the source file.
+ *
+ * #[\u0009\u0020-\uFFFF]*
+ */
+let readComment = (
+  source: Util.Source.t, 
+  start: int, 
+  line: int, 
+  col: int, 
+  prev: option(Type.Token.t)
+) : Type.Token.t => {
+  let body = source.body;
+  let bodyLength = String.length(body);
+
+  let rec findCommentEnd = (pos) => {
+    switch(pos < bodyLength) {
+    | false => pos
+    | true => {
+      let code = getCode(body, pos);
+      // Source Character or TAB(0x0009)
+      switch(code > 0x001f || code == 0x0009) {
+      | false => pos + 1
+      | true => findCommentEnd(pos + 1)
+      }
+    }
+    }
+  };
+
+  let end_ = findCommentEnd(start + 1);
+
+  Type.Token.make(
+    Type.Token.Comment,
+    start,
+    end_,
+    line,
+    col,
+    prev,
+    Some(sliceString(body, start + 1, end_))
+  );
+};
 
 /**
  * Reads an alphanumeric + underscore name from the source.
@@ -169,7 +212,7 @@ and readNameInternal = (
   prev: option(Type.Token.t),
   pos: int
 ) : Type.Token.t => {
-  let makeToken = () => Type.Token.make(Type.Token.Name, start, pos, line, col, prev, Some(String.sub(body, start, pos - start)))
+  let makeToken = () => Type.Token.make(Type.Token.Name, start, pos, line, col, prev, Some(sliceString(body, start, pos)))
 
   switch(pos < bodyLength) {
   | false => makeToken();
@@ -285,7 +328,7 @@ let rec readNumber = (
     line,
     col,
     prev,
-    Some(String.sub(body, start, pos - start))
+    Some(sliceString(body, start, pos))
   );
 };
 
@@ -316,7 +359,7 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
     // !
     | 33 => Token.make(Token.Bang, pos, pos + 1, line, col, Some(prev), None);
     // #
-    //| 35 => readComment(source, pos, line, col, Some(prev), None);
+    | 35 => readComment(source, pos, line, col, Some(prev));
     // $
     | 36 => Token.make(Token.Dollar, pos, pos + 1, line, col, Some(prev), None);
     // &
