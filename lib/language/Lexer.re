@@ -112,6 +112,52 @@ let unexpectedCharacterMessage = code => {
  * NOTE: port of JavaScript char.charCodeAt(position)
  */
 let getCode = (text, pos) => int_of_char(String.get(text, pos));
+
+/**
+ * Reads an alphanumeric + underscore name from the source.
+ *
+ * [_A-Za-z][_0-9A-Za-z]*
+ */
+let rec readName = (
+  source: Util.Source.t, 
+  start: int, 
+  line: int, 
+  col: int, 
+  prev: option(Type.Token.t)
+) : Type.Token.t => {
+  let body = source.body;
+  let bodyLength = String.length(body);
+  let pos = start + 1;
+
+  readNameInternal(body, bodyLength, start, line, col, prev, pos);
+}
+and readNameInternal = (
+  body: string,
+  bodyLength: int,
+  start: int,
+  line: int,
+  col: int,
+  prev: option(Type.Token.t),
+  pos: int
+) : Type.Token.t => {
+  let makeToken = () => Type.Token.make(Type.Token.Name, start, pos, line, col, prev, Some(String.sub(body, start, pos - start)))
+
+  switch(pos < bodyLength) {
+  | false => makeToken();
+  | true => {
+    let code = getCode(body, pos);
+
+    switch(code == 95 || //_
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122)) { // a-z
+    | false => makeToken();
+    | true => readNameInternal(body, bodyLength, start, line, col, prev, pos + 1);
+    }
+  }
+  }
+};
+
 /**
  * Gets the next token from the source starting at the given position.
  *
@@ -170,10 +216,10 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
     // }
     | 125 => Token.make(Token.BraceRight, pos, pos + 1, line, col, Some(prev), None);
     // A-Z _ a-z
-    //| 65 | 66 | 67 | 68 | 69 | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 77 | 78  | 79 | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 | 88 | 89 | 90 
-    //| 95 
-    //| 97 | 98 | 99 | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111 | 112 | 113 | 114 | 115 | 116 | 117 | 118 | 119 | 120 | 121 | 122
-    // return readName(source, pos, line, col, Some(prev), None);
+    | 65 | 66 | 67 | 68 | 69 | 70 | 71 | 72 | 73 | 74 | 75 | 76 | 77 | 78  | 79 | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 | 88 | 89 | 90 
+    | 95 
+    | 97 | 98 | 99 | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111 | 112 | 113 | 114 | 115 | 116 | 117 | 118 | 119 | 120 | 121 | 122
+    => readName(source, pos, line, col, Some(prev));
     // - 0-9
     //| 45
     //| 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 
