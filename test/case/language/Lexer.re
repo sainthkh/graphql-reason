@@ -5,6 +5,12 @@ let lexOne = str => {
   Language.Lexer.advance(lexer);
 };
 
+let lexSecond = str => {
+  let lexer = Language.Lexer.make(Util.Source.make(~body=str, ()), ());
+  ignore(Language.Lexer.advance(lexer));
+  Language.Lexer.advance(lexer);
+};
+
 let matchOptions: (option('a), option('b)) => bool = (result, expected) => {
   switch(result, expected) {
   | (None, None) => true
@@ -114,7 +120,7 @@ describe("Lexer", ({describe, test}) => {
   });
 
   let compare = (text, expected: tokenExpected) => {
-    test("Test Punctuation: " ++ text, ({expect}) => {
+    test("Test: " ++ text, ({expect}) => {
       let result: Type.Token.t = lexOne(text);
 
       expect.bool(result.kind == expected.kind).toBe(true);
@@ -153,6 +159,140 @@ describe("Lexer", ({describe, test}) => {
       end_: 6,
       value: Some("foo"),
     });
+  });
+
+  describe("lexes block strings", ({test}) => {
+    compare("\"\"\"simple\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 12,
+      value: Some("simple"),
+    });
+
+    compare("\"\"\" white space \"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 19,
+      value: Some(" white space "),
+    });
+
+    compare("\"\"\"contains \" quote\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 22,
+      value: Some("contains \" quote"),
+    });
+
+    compare("\"\"\"contains \\\"\"\" triplequote\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 31,
+      value: Some("contains \"\"\" triplequote"),
+    });
+
+    compare("\"\"\"multi\nline\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 16,
+      value: Some("multi\nline"),
+    });
+
+    compare("\"\"\"multi\rline\r\nnormalized\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 28,
+      value: Some("multi\nline\nnormalized"),
+    });
+
+    compare("\"\"\"unescaped \\n\\r\\b\\t\\f\\u1234\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 32,
+      value: Some("unescaped \\n\\r\\b\\t\\f\\u1234"),
+    });
+
+    compare("\"\"\"slashes \\\\ \\/\"\"\"", {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 19,
+      value: Some("slashes \\\\ \\/"),
+    });
+
+    compare({|"""
+
+        spans
+          multiple
+            lines
+
+        """|}, {
+      kind: Type.Token.BlockString,
+      start: 0,
+      end_: 68,
+      value: Some("spans\n  multiple\n    lines"),
+    });
+  });
+
+  describe("advance line after lexing multiline block string", ({test}) => {
+    // NOTE: It is copied here because it uses lexSecond.
+    let compare = (text, expected: moreTokenExpected) => {
+      test("Text: " ++ text, ({expect}) => {
+        let result: Type.Token.t = lexSecond(text);
+        
+        expect.bool(result.kind == expected.kind).toBe(true);
+        expect.int(result.start).toBe(expected.start);
+        expect.int(result.end_).toBe(expected.end_);
+        expect.int(result.line).toBe(expected.line);
+        expect.int(result.column).toBe(expected.column);
+        expect.bool(matchOptions(result.value, expected.value)).toBe(true);      
+      })
+    };
+
+    compare({|"""
+
+        spans
+          multiple
+            lines
+
+        
+ """ second_token|}, {
+      kind: Type.Token.Name,
+      start: 71,
+      end_: 83,
+      line: 8,
+      column: 6,
+      value: Some("second_token"),
+    });
+
+    compare(
+      String.concat("", [
+        "\"\"\" \n",
+        "spans \r\n",
+        "multiple \n\r",
+        "lines \n\n",
+        "\"\"\"\n second_token",
+      ]), {
+      kind: Type.Token.Name,
+      start: 37,
+      end_: 49,
+      line: 8,
+      column: 2,
+      value: Some("second_token"),
+    });
+  });
+
+  describe("lex reports useful block string errors", ({test}) => {
+    expectSyntaxError("\"\"\"", "Unterminated string.", 1, 4);
+    expectSyntaxError("\"\"\"no end quote", "Unterminated string.", 1, 16);
+    expectSyntaxError(
+      "\"\"\"contains unescaped \007 control char\"\"\"",
+      "Invalid character within String: \"\\u0007\".",
+      1, 23
+    );
+    expectSyntaxError(
+      "\"\"\"null-byte is not \000 end of file\"\"\"",
+      "Invalid character within String: \"\\u0000\".",
+      1, 21
+    );
   });
   
   describe("lexes numbers", ({test}) => {

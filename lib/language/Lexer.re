@@ -62,7 +62,7 @@ let createLexer = make;
 
 let printCharCode = code => {
   let values = [|
-    "<EOF>", "\"\\u0001\"", "\"\\u0002\"", "\"\\u0003\"", "\"\\u0004\"", "\"\\u0005\"", "\"\\u0006\"", "\"\\u0007\"", "\"\\b\"", "\"\\t\"",
+    "\"\\u0000\"", "\"\\u0001\"", "\"\\u0002\"", "\"\\u0003\"", "\"\\u0004\"", "\"\\u0005\"", "\"\\u0006\"", "\"\\u0007\"", "\"\\b\"", "\"\\t\"",
     "\"\\n\"", "\"\\u000b\"", "\"\\f\"", "\"\\r\"", "\"\\u000e\"", "\"\\u000f\"", "\"\\u0010\"", "\"\\u0011\"", "\"\\u0012\"", "\"\\u0013\"",
     "\"\\u0014\"", "\"\\u0015\"", "\"\\u0016\"", "\"\\u0017\"", "\"\\u0018\"", "\"\\u0019\"", "\"\\u001a\"", "\"\\u001b\"", "\"\\u001c\"", "\"\\u001d\"",
     "\"\\u001e\"", "\"\\u001f\"", "\" \"", "\"!\"", "\"\"\"", "\"#\"", "\"$\"", "\"%%\"", "\"&\"", "\"'\"",
@@ -262,7 +262,11 @@ let rec readNumber = (
     | false => Error.API.syntaxError(
       source, 
       pos,
-      "Invalid number, expected digit but got: " ++ printCharCode(code)
+      "Invalid number, expected digit but got: " ++ 
+        switch(pos < bodyLength) {
+        | true => printCharCode(code)
+        | false => "<EOF>"
+        }
     )
     }
   }
@@ -330,6 +334,122 @@ let rec readNumber = (
     prev,
     Some(sliceString(body, start, pos))
   );
+};
+
+/**
+ * Reads a block string token from the source file.
+ *
+ * """("?"?(\\"""|\\(?!=""")|[^"\\]))*""" 
+ *
+ * NOTE: " <= Double quote is added here to fix unfinished string bug in reason 3.4.0.
+ */
+let readBlockString = (
+  source: Util.Source.t,
+  start: int, 
+  line: int, 
+  col: int, 
+  prev: option(Type.Token.t),
+  lexer: t
+): Type.Token.t => {
+  let body = source.body;
+  let bodyLength = String.length(body);
+
+  let rec readBlockStringInternal = (pos, chunkStart, raw) => 
+    switch (pos < bodyLength) {
+    | true => {
+      let code = getCode(body, pos);
+      let updateLineInfo = (newPosition) => {
+        lexer.line := lexer.line^ + 1;
+        lexer.lineStart := newPosition;
+      };
+
+      switch(code) {
+      // "
+      | 34 => {
+        // Can we close tag? (""")
+        switch(pos + 2 < bodyLength && getCode(body, pos + 1) == 34 && getCode(body, pos + 2) == 34) {
+        | true => {
+          let final = Array.concat([raw, [|sliceString(body, chunkStart, pos)|]]);
+          Type.Token.make(
+            Type.Token.BlockString,
+            start, 
+            pos + 3,
+            line,
+            col,
+            prev,
+            Some(BlockString.dedent(String.concat("", Array.to_list(final))))
+          )
+        }
+        | false => readBlockStringInternal(pos + 1, chunkStart, raw)
+        }
+      }
+      // new line
+      | 10 => {
+        let next = pos + 1;
+        updateLineInfo(next);
+        readBlockStringInternal(next, chunkStart, raw);
+      }
+      // carriage return
+      | 13 => {
+        let next = 
+          switch(pos + 1 < bodyLength && getCode(body, pos + 1) == 10) {
+          | true => pos + 2
+          | false => pos + 1
+          }
+        updateLineInfo(next);
+        readBlockStringInternal(next, chunkStart, raw);
+      }
+      // \ 
+      | 92 => {
+        // Can we escape tag? (\""")
+        switch(pos + 3 < bodyLength &&
+          getCode(body, pos + 1) == 34 &&
+          getCode(body, pos + 2) == 34 &&
+          getCode(body, pos + 3) == 34 
+        ) {
+        | true => {
+          let next = pos + 4;
+          let newRaw = Array.concat([raw, [|sliceString(body, chunkStart, pos), "\"\"\""|]])
+          readBlockStringInternal(next, next, newRaw);
+        }
+        | false => readBlockStringInternal(pos + 1, chunkStart, raw);
+        }
+      }
+      | _ => {
+        switch(code < 0x0020 &&
+          code != 0x0009 && // TAB
+          code != 0x000a && // new line
+          code != 0x000d // carriage return
+        ) {
+        | true => Error.API.syntaxError(source, pos, "Invalid character within String: " ++ printCharCode(code))
+        | false => readBlockStringInternal(pos + 1, chunkStart, raw)
+        }
+      }
+      }
+    }
+    | false => Error.API.syntaxError(source, pos, "Unterminated string")
+    }
+  
+  let pos = start + 3;
+  readBlockStringInternal(pos, pos, [||]);
+};
+
+let readString = (
+  source: Util.Source.t,
+  start: int,
+  line: int,
+  col: int,
+  prev: option(Type.Token.t)
+): Type.Token.t => {
+  Type.Token.make(
+    Type.Token.String,
+    start, 
+    start + 1,
+    line,
+    col,
+    prev,
+    Some("")
+  )
 };
 
 /**
@@ -401,7 +521,12 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
     | 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 
     => readNumber(source, pos, line, col, Some(prev));
     // "
-    //| 34 => if (body.charCodeAt(pos + 1) === 34 && body.charCodeAt(pos + 2) === 34) { return readBlockString(source, pos, line, col, prev, lexer); }  return readString(source, pos, line, col, Some(prev), None);
+    | 34 => {
+      switch (pos + 2 < bodyLength && getCode(body, pos + 1) == 34 && getCode(body, pos + 2) == 34) { 
+      | true => readBlockString(source, pos, line, col, Some(prev), lexer)
+      | false => readString(source, pos, line, col, Some(prev));
+      }
+    }
     | _ => syntaxError(code)
     }
   }
