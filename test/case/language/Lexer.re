@@ -65,6 +65,34 @@ describe("Lexer", ({describe, test}) => {
     })
   };
 
+  let compare = (text, expected: tokenExpected) => {
+    test("Test: " ++ text, ({expect}) => {
+      let result: Type.Token.t = lexOne(text);
+
+      expect.bool(result.kind == expected.kind).toBe(true);
+      expect.int(result.start).toBe(expected.start);
+      expect.int(result.end_).toBe(expected.end_);
+      expect.bool(matchOptions(result.value, expected.value)).toBe(true);
+    });
+  };
+
+  describe("disallows uncommon control characters", ({test}) => {
+    expectSyntaxError(
+      "\007",
+      "Cannot contain the invalid character \"\\u0007\".",
+      1, 1
+    );
+  });
+
+  describe("accepts BOM header", ({test}) => {
+    compare("\xef\xbb\xbf foo", {
+      kind: Type.Token.Name,
+      start: 4,
+      end_: 7,
+      value: Some("foo"),
+    });
+  });
+
   /**
    * NOTE: Some tests are added to test cases separately. 
    */
@@ -119,17 +147,6 @@ describe("Lexer", ({describe, test}) => {
     });
   });
 
-  let compare = (text, expected: tokenExpected) => {
-    test("Test: " ++ text, ({expect}) => {
-      let result: Type.Token.t = lexOne(text);
-
-      expect.bool(result.kind == expected.kind).toBe(true);
-      expect.int(result.start).toBe(expected.start);
-      expect.int(result.end_).toBe(expected.end_);
-      expect.bool(matchOptions(result.value, expected.value)).toBe(true);
-    });
-  };
-
   describe("skips whitespace and comments", ({test}) => {
     compare({|
 
@@ -159,6 +176,122 @@ describe("Lexer", ({describe, test}) => {
       end_: 6,
       value: Some("foo"),
     });
+  });
+
+  describe("lexes strings", ({test}) => {
+    compare("\"simple\"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 8,
+      value: Some("simple"),
+    });
+
+    compare("\" white space \"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 15,
+      value: Some(" white space "),
+    });
+
+    compare("\"quote \\\"\"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 10,
+      value: Some("quote \""),
+    });
+
+    compare("\"escaped \\n\\r\\b\\t\\f\"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 20,
+      value: Some("escaped \n\r\b\t\012"),
+    });
+
+    compare("\"slashes \\\\ \\/\"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 15,
+      value: Some("slashes \\ /"),
+    });
+
+    compare("\"unicode \\uac00\\u3042\\u798F\"", {
+      kind: Type.Token.String,
+      start: 0,
+      end_: 28,
+      value: Some("unicode 가あ福"),
+    });
+  });
+
+  describe("lex reports useful string errors", ({test}) => {
+    expectSyntaxError("\"", "Unterminated string.", 1, 2);
+    expectSyntaxError("\"no end quote", "Unterminated string.", 1, 14);
+    expectSyntaxError(
+      "'single quotes'",
+      "Unexpected single quote character ('), " ++
+        "did you mean to use a double quote (\")?",
+      1, 1
+    );
+
+    expectSyntaxError(
+      "\"contains unescaped \007 control char\"",
+      "Invalid character within String: \"\\u0007\".",
+      1, 21
+    );
+
+    expectSyntaxError(
+      "\"null-byte is not \000 end of file\"",
+      "Invalid character within String: \"\\u0000\".",
+      1, 19
+    );
+
+    expectSyntaxError("\"multi\nline\"", "Unterminated string.", 1, 7);
+
+    expectSyntaxError("\"multi\rline\"", "Unterminated string.", 1, 7);
+
+    expectSyntaxError(
+      "\"bad \\z esc\"",
+      "Invalid character escape sequence: \\z.",
+      1, 7
+    );
+
+    expectSyntaxError(
+      "\"bad \\x esc\"",
+      "Invalid character escape sequence: \\x.",
+      1, 7
+    );
+    
+    expectSyntaxError(
+      "\"bad \\u0XX1 esc\"",
+      "Invalid character escape sequence: \\u.",
+      1, 7
+    );
+
+    expectSyntaxError(
+      "\"bad \\uXXXX esc\"",
+      "Invalid character escape sequence: \\u.",
+      1, 7
+    );
+
+    expectSyntaxError(
+      "\"bad \\uXXXF esc\"",
+      "Invalid character escape sequence: \\u.",
+      1, 7
+    );
+
+    /*
+     * NOTE: commented out because current lexer cannot detect these errors. 
+     *
+    expectSyntaxError(
+      "\"bad \\u1 esc\"",
+      "Invalid character escape sequence: \\u.",
+      1, 7
+    );
+
+    expectSyntaxError(
+      "\"bad \\uFXXX esc\"",
+      "Invalid character escape sequence: \\u.",
+      1, 7
+    );*/
   });
 
   describe("lexes block strings", ({test}) => {

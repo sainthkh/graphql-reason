@@ -84,27 +84,48 @@ let printCharCode = code => {
 };
 
 /**
+ * NOTE: port of JavaScript char.charCodeAt(position)
+ */
+let getCode = (text, pos) => int_of_char(String.get(text, pos));
+/**
+ * NOTE: port of JavaScript string.slice(start, end)
+ */
+let sliceString = (text, start, end_) => String.sub(text, start, end_ - start);
+
+/**
  * Reads from body starting at startPosition until it finds a non-whitespace
  * character, then returns the position of that character for lexing.
  */
 let rec positionAfterWhitespace = (body, startPosition, lexer) => {
   let bodyLength = String.length(body);
-  let position = startPosition;
+  let pos = startPosition;
   
-  switch(position < bodyLength) {
+  switch(pos < bodyLength) {
   | true => {
-    let code = int_of_char(String.get(body, position));
+    let code = getCode(body, pos);
     let updateLineInfo = (newPosition) => {
       lexer.line := lexer.line^ + 1;
       lexer.lineStart := newPosition;
     };
 
     switch(code) {
-    // tab | space | comma | BOM
-    | 9 | 32 | 44 | 0xfeff => positionAfterWhitespace(body, position + 1, lexer)
+    // tab | space | comma
+    | 9 | 32 | 44 => positionAfterWhitespace(body, pos + 1, lexer)
+    // BOM
+    | 0xef => {
+      switch(pos + 2 < bodyLength) {
+      | true => {
+        switch(getCode(body, pos + 1) == 0xbb && getCode(body, pos + 2) == 0xbf) {
+        | true => positionAfterWhitespace(body, pos + 3, lexer)
+        | false => pos
+        }
+      }
+      | false => pos
+      }
+    }
     // newline
     | 10 => {
-      let newPosition = position + 1;
+      let newPosition = pos + 1;
       updateLineInfo(newPosition);
       positionAfterWhitespace(body, newPosition, lexer);
     }
@@ -112,36 +133,30 @@ let rec positionAfterWhitespace = (body, startPosition, lexer) => {
     | 13 => {
       // Check for \r\n.
       let newPosition = 
-        switch(position + 1 < bodyLength && 
-          int_of_char(String.get(body, position + 1)) == 10) {
-        | true => position + 2
-        | false => position + 1
+        switch(pos + 1 < bodyLength && 
+          int_of_char(String.get(body, pos + 1)) == 10) {
+        | true => pos + 2
+        | false => pos + 1
         }
       updateLineInfo(newPosition);
       positionAfterWhitespace(body, newPosition, lexer);
     }
-    | _ => position;
+    | _ => pos;
     }
   };
-  | false => position;
+  | false => pos;
   }
 };
 
 let unexpectedCharacterMessage = code => {
   if (code < 0x0020 && code != 0x0009 && code != 0x000a && code != 0x000d) {
-    "Cannot contain the invalid character " ++ printCharCode(code);
+    "Cannot contain the invalid character " ++ printCharCode(code) ++ ".";
   } else if (code === 39) { // '
     "Unexpected single quote character ('), did you mean to use a double quote (\")?"
   } else {
-    "Cannot parse the unexpected character " ++ printCharCode(code)
+    "Cannot parse the unexpected character " ++ printCharCode(code) ++ ".";
   }
 };
-
-/**
- * NOTE: port of JavaScript char.charCodeAt(position)
- */
-let getCode = (text, pos) => int_of_char(String.get(text, pos));
-let sliceString = (text, start, end_) => String.sub(text, start, end_ - start);
 
 /**
  * Reads a comment token from the source file.
@@ -266,7 +281,7 @@ let rec readNumber = (
         switch(pos < bodyLength) {
         | true => printCharCode(code)
         | false => "<EOF>"
-        }
+        } ++ "."
     )
     }
   }
@@ -295,7 +310,7 @@ let rec readNumber = (
     | true => Error.API.syntaxError(
       source, 
       pos + 1, 
-      "Invalid number, unexpected digit after 0: " ++ printCharCode(next));
+      "Invalid number, unexpected digit after 0: " ++ printCharCode(next) ++ ".")
     }
   }
   | _ => readDigits(pos)
@@ -421,19 +436,79 @@ let readBlockString = (
           code != 0x000a && // new line
           code != 0x000d // carriage return
         ) {
-        | true => Error.API.syntaxError(source, pos, "Invalid character within String: " ++ printCharCode(code))
+        | true => Error.API.syntaxError(source, pos, "Invalid character within String: " ++ printCharCode(code) ++ ".")
         | false => readBlockStringInternal(pos + 1, chunkStart, raw)
         }
       }
       }
     }
-    | false => Error.API.syntaxError(source, pos, "Unterminated string")
+    | false => Error.API.syntaxError(source, pos, "Unterminated string.")
     }
   
   let pos = start + 3;
   readBlockStringInternal(pos, pos, [||]);
 };
 
+/**
+ * Converts a hex character to its integer value.
+ * '0' becomes 0, '9' becomes 9
+ * 'A' becomes 10, 'F' becomes 15
+ * 'a' becomes 10, 'f' becomes 15
+ *
+ * Returns -1 on error.
+ */
+let char2hex = a => {
+  let code = Char.code(a);
+  code >= 48 && code <= 57
+    ? code - 48 // 0-9
+    : code >= 65 && code <= 70
+    ? code - 55 // A-F
+    : code >= 97 && code <= 102
+    ? code - 87 // a-f
+    : -1;
+};
+
+/**
+ * Converts four hexadecimal chars to the integer that the
+ * string represents. For example, uniCharCode('0','0','0','f')
+ * will return 15, and uniCharCode('0','0','f','f') returns 255.
+ *
+ * Returns a negative number on error, if a char was invalid.
+ *
+ * This is implemented by noting that char2hex() returns -1 on error,
+ * which means the result of ORing the char2hex() will also be negative.
+ */
+let uniCharCode = (a, b, c, d) => {
+  char2hex(a) * 4096 + 
+  char2hex(b) * 256 + 
+  char2hex(c) * 16 +
+  char2hex(d)
+};
+
+/**
+ * NOTE: We need this function because Reason Native strings are just sequence of 8bit data.
+ * This function creates a string. So, the length of one unicode character string isn't 1. 
+ * (i.e. String.length("가") != 1 => It's actually 3.)
+ */
+let encode2utf8 = code => {
+  if (code < 0x80) {
+    Bytes.to_string(Bytes.make(1, Char.chr(code)));
+  } else if (code < 0x800) {
+    let a = [|192 + code / 64, 128 + code mod 64|];
+    Bytes.to_string(Bytes.init(2, (i => Char.chr(a[i]))));
+  } else {
+    let a = [|224 + code / (64*64), 128 + (code / 64) mod 64, 128 + code mod 64|];
+    Bytes.to_string(Bytes.init(3, (i => Char.chr(a[i]))));
+  }
+};
+
+/**
+ * Reads a string token from the source file.
+ *
+ * "([^"\\\u000A\u000D]|(\\(u[0-9a-fA-F]{4}|["\\/bfnrt])))*"
+ * 
+ * NOTE: As OCaml doesn't support unicode natively, I've currently removed \uXXXX syntax. 
+ */
 let readString = (
   source: Util.Source.t,
   start: int,
@@ -441,15 +516,111 @@ let readString = (
   col: int,
   prev: option(Type.Token.t)
 ): Type.Token.t => {
-  Type.Token.make(
-    Type.Token.String,
-    start, 
-    start + 1,
-    line,
-    col,
-    prev,
-    Some("")
-  )
+  let body = source.body;
+  let bodyLength = String.length(body);
+
+  let rec readStringInternal = (pos, chunkStart, raw) => {
+    let error = () => 
+      Error.API.syntaxError(source, pos, "Unterminated string.")
+
+    switch(pos < bodyLength) {
+    | true => {
+      let code = getCode(body, pos);
+      switch(
+        code != 0x000a && // new line
+        code != 0x000d // carriage return
+      ) {
+      | true => {
+        switch(code) {
+        // "
+        | 34 => {
+          let final = Array.concat([raw, [|sliceString(body, chunkStart, pos)|]]);
+          Type.Token.make(
+            Type.Token.String,
+            start, 
+            pos + 1,
+            line,
+            col,
+            prev,
+            Some(String.concat("", Array.to_list(final)))
+          );
+        }
+        // \
+        | 92 => {
+          switch(pos + 1 < bodyLength) {
+          | true => {
+            let appendAndReadOn = str => {
+              let next = pos + 2;
+              readStringInternal(next, next, 
+                Array.concat([raw, [|sliceString(body, chunkStart, pos), str|]]));
+            };
+
+            let next = getCode(body, pos + 1);
+            let invalidCharError = () => 
+              Error.API.syntaxError(
+                source, 
+                pos + 1, 
+                "Invalid character escape sequence: " 
+                  ++ "\\" ++ Char.escaped(Char.chr(next)) ++ "."
+              );
+
+            switch(next) {
+            | 34 => appendAndReadOn("\"")
+            | 47 => appendAndReadOn("/")
+            | 92 => appendAndReadOn("\\")
+            | 98 => appendAndReadOn("\b")
+            | 102 => appendAndReadOn("\012") // \f form feed.
+            | 110 => appendAndReadOn("\n")
+            | 114 => appendAndReadOn("\r")
+            | 116 => appendAndReadOn("\t")
+            | 117 => {
+              switch(pos + 5 < bodyLength) {
+              | true => {
+                let code = uniCharCode(
+                  String.get(body, pos + 2),
+                  String.get(body, pos + 3),
+                  String.get(body, pos + 4),
+                  String.get(body, pos + 5)
+                );
+                switch(code >= 0) {
+                | true => {
+                  let next = pos + 6;
+                  readStringInternal(next, next, 
+                    Array.concat([raw, [|sliceString(body, chunkStart, pos), encode2utf8(code)|]]))
+                }
+                | false => invalidCharError()
+                }
+              }
+              | false => invalidCharError()
+              }
+            }
+            | _ => invalidCharError();
+            }
+          }
+          | false => error()
+          }
+        }
+        | _ => {
+          switch(code < 0x0020 &&
+            code != 0x0009 // TAB
+          ) {
+          | true => Error.API.syntaxError(source, pos, "Invalid character within String: " ++ printCharCode(code) ++ ".")
+          | false => readStringInternal(pos + 1, chunkStart, raw);
+          }
+        }
+        }
+      }
+      | false => error();
+      }
+    }
+    | false => error();
+    }
+  };
+
+
+  let pos = start + 1;
+  let chunkStart = pos;
+  readStringInternal(pos, chunkStart, [||]);
 };
 
 /**

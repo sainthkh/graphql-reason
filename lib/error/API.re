@@ -17,7 +17,7 @@ let syntaxError = (
   raise(
     GraphQLError.Exception(
       GraphQLError.make(
-        "Syntax Error: " ++ description ++ ".",
+        "Syntax Error: " ++ description,
         ~source=source,
         ~positions=[|position|],
         ()
