@@ -12,8 +12,11 @@ module Parse {
     * By default, the parser creates AST nodes that know the location
     * in the source that they correspond to. This configuration flag
     * disables that behavior for performance or testing.
+    *
+    * NOTE: Removed this option because it makes location field harder to use 
+    * in ReasonML. And performance gain is negligible.
     */
-    noLocation: option(bool),
+    //noLocation: option(bool),
 
     /**
     * If enabled, the parser will parse empty fields sets in the Schema
@@ -55,13 +58,13 @@ module Parse {
   };
 
   let make = (
-    ~noLocation: option(bool) =?,
+    //~noLocation: option(bool) =?,
     ~allowLegacySDLEmptyFields: option(bool) =?,
     ~allowLegacySDLImplementsInterfaces: option(bool) =?,
     ~experimentalFragmentVariables: option(bool) =?,
     ()
   ) => {
-    noLocation,
+    //noLocation,
     allowLegacySDLEmptyFields,
     allowLegacySDLImplementsInterfaces,
     experimentalFragmentVariables,

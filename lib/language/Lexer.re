@@ -37,7 +37,7 @@ let make = (
   source, 
   ~options: option(Option.Parse.t) =?,
   ()
-) => {
+): t => {
   let option = 
     switch(options) {
     | Some(o) => o

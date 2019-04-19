@@ -123,3 +123,12 @@ let desc = token => {
   | None => string_of_kind(token.kind)
   }
 }
+
+let unwrapValue = (
+  token: t
+): string => {
+  switch(token.value) {
+  | Some(v) => v
+  | None => ""
+  }
+}

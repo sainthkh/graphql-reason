@@ -46,19 +46,14 @@ type namedTypeNode = {
   name: nameNode,
 };
 
-type typeNode = 
-  | NamedTypeNode(namedTypeNode)
-  | ListTypeNode(location, typeNode)
-  | NonNullTypeNode(nonNullTypeNode)
+type complexTypeNode = 
+  | ListTypeNode(typeNode)
+  | NonNullTypeNode(typeNode)
 
-and nonNullTypeContentNode = 
-  | NonNullNamedTypeNode(namedTypeNode)
-  | NonNullListTypeNode(location, typeNode)
-
-and nonNullTypeNode = {
-  loc: location,
-  type_: nonNullTypeContentNode,
-};
+and typeNode = 
+  | NamedTypeNode(location, namedTypeNode)
+  | ComplexTypeNode(location, complexTypeNode)
+  ;
 
 type variableNode = {
   loc: location,
@@ -95,11 +90,11 @@ type enumValueNode = {
 };
 
 type valueNode = 
-  | VariableNode(location, string)
+  | VariableNode(location, variableNode)
   | IntValueNode(location, string)
   | FloatValueNode(location, string)
-  | StringValueNode(location, string)
-  | BooleanValueNode(location, string)
+  | StringValueNode(location, string, bool)
+  | BooleanValueNode(location, bool)
   | NullValueNode(location)
   | EnumValueNode(location, string)
   | ListValueNode(location, array(valueNode))
@@ -143,7 +138,7 @@ and selectionNode =
     nameNode, 
     option(array(argumentNode)), // arguments
     option(array(directiveNode)), // directives
-    selectionSetNode
+    option(selectionSetNode)
   )
   | FragmentSpreadNode(
     location,
@@ -152,7 +147,7 @@ and selectionNode =
   )
   | InlineFragmentNode(
     location,
-    namedTypeNode,
+    option(namedTypeNode),
     option(array(directiveNode)),
     selectionSetNode
   )
@@ -178,7 +173,7 @@ type operationTypeNode =
 type operationDefinitionNode = {
   loc: location,
   operation: operationTypeNode,
-  name: nameNode,
+  name: option(nameNode),
   variableDefinitions: option(array(variableDefinitionNode)),
   directives: option(array(directiveNode)),
   selectionSet: selectionSetNode,
