@@ -109,7 +109,7 @@ let any = (
   let rec anyInternal = nodes =>  
     switch(expectOptionalToken(lexer, closeKind)) {
     | Some(_) => nodes
-    | None => anyInternal(nodes)
+    | None => anyInternal(Array.append(nodes, [|parseFn(lexer)|]))
     }
   
   ignore(expectToken(lexer, openKind));
@@ -132,7 +132,7 @@ let many = (
   let rec manyInternal = nodes =>  
     switch(expectOptionalToken(lexer, closeKind)) {
     | Some(_) => nodes
-    | None => manyInternal(nodes)
+    | None => manyInternal(Array.append(nodes, [|parseFn(lexer)|]))
     }
   
   ignore(expectToken(lexer, openKind));
