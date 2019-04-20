@@ -8,5 +8,6 @@
    ; the purposes of this example we are only depending on the test runner itself
    (libraries 
       rely.lib
+      graphql-reason.error
    )
 )

@@ -39,31 +39,7 @@ type moreTokenExpected = {
  * NOTE: Unlike graphql-js, it tests one text in one test. Because it makes it easier to find problems. 
  */
 describe("Lexer", ({describe, test}) => {
-  let expectSyntaxError = (
-    text: string, 
-    errMsg: string, 
-    line: int, 
-    col: int
-  ) => {
-    test("Test: " ++ text, ({expect}) => {
-      switch(lexOne(text)) {
-      | _token => expect.bool(false).toBe(true) // shouldn't be here.
-      | exception Error.GraphQLError.Exception(err) => {
-        expect.string(err.message).toEqual("Syntax Error: " ++ errMsg);
-        
-        switch(err.locations) {
-        | None => expect.bool(false).toBe(true) // shouldn't be here.
-        | Some(locations) => {
-          expect.int(Array.length(locations)).toBe(1);
-          let loc = locations[0];
-          expect.int(loc.line).toBe(line);
-          expect.int(loc.column).toBe(col);
-        }
-        }
-      }
-      }
-    })
-  };
+  let expectSyntaxError = Test.Util.expectSyntaxError(test, lexOne)
 
   let compare = (text, expected: tokenExpected) => {
     test("Test: " ++ text, ({expect}) => {
