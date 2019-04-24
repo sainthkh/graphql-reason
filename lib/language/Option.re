@@ -2,10 +2,16 @@
 NOTE: In graphql-js, the content below is in /language/parser.js. But to avoid cicular dependency in ReasonML, it is moved here. 
 */
 
+let noneToFalse: option(bool) => bool = v => 
+  switch(v) {
+  | Some(v) => v
+  | None => false
+  }
+  ;
+
 /**
  * Configuration options to control parser behavior
  */
-
 module Parse {
   type t = {
     /**
@@ -26,7 +32,7 @@ module Parse {
     * This option is provided to ease adoption of the final SDL specification
     * and will be removed in v16.
     */
-    allowLegacySDLEmptyFields: option(bool),
+    allowLegacySDLEmptyFields: bool,
 
     /**
     * If enabled, the parser will parse implemented interfaces with no `&`
@@ -36,7 +42,7 @@ module Parse {
     * This option is provided to ease adoption of the final SDL specification
     * and will be removed in v16.
     */
-    allowLegacySDLImplementsInterfaces: option(bool),
+    allowLegacySDLImplementsInterfaces: bool,
 
     /**
     * EXPERIMENTAL:
@@ -54,7 +60,7 @@ module Parse {
     * Note: this feature is experimental and may change or be removed in the
     * future.
     */
-    experimentalFragmentVariables: option(bool),
+    experimentalFragmentVariables: bool,
   };
 
   let make = (
@@ -65,8 +71,8 @@ module Parse {
     ()
   ) => {
     //noLocation,
-    allowLegacySDLEmptyFields,
-    allowLegacySDLImplementsInterfaces,
-    experimentalFragmentVariables,
+    allowLegacySDLEmptyFields: noneToFalse(allowLegacySDLEmptyFields),
+    allowLegacySDLImplementsInterfaces: noneToFalse(allowLegacySDLImplementsInterfaces),
+    experimentalFragmentVariables: noneToFalse(experimentalFragmentVariables),
   }
 }

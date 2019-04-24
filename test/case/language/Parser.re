@@ -12,15 +12,12 @@ describe("Parser", ({describe, test}) => {
 
   describe("parse provides useful errors", ({test}) => {
     expectSyntaxError("{", "Expected Name, found <EOF>", 1, 2);
-    /*
-    Note: Currently commented out because of "fragment"
-    expectSyntaxError(
-      {|
+    expectSyntaxError({|
       { ...MissingOn }
       fragment MissingOn Type|},
       "Expected \"on\", found Name \"Type\"",
-      3, 26,
-    );*/
+      3, 26
+    );
     expectSyntaxError("{ field: {} }", "Expected Name, found {", 1, 10);
     expectSyntaxError(
       "notanoperation Foo { field }",

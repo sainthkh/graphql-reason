@@ -30,13 +30,44 @@ let expectOptionalToken = (
   lexer: Lexer.t,
   kind: Type.Token.kind
 ): option(Type.Token.t) => {
-  let token = lexer.token^;
-  switch(token.kind == kind) {
-  | true => {
-    ignore(Lexer.advance(lexer));
-    Some(token);
+  switch(expectToken(lexer, kind)) {
+  | token => Some(token)
+  | exception _ => None;
   }
-  | false => None
+};
+
+/**
+ * If the next token is a given keyword, return that token after advancing
+ * the lexer. Otherwise, do not change the parser state and throw an error.
+ */
+let expectKeyword = (
+  lexer: Lexer.t,
+  value: string
+): Type.Token.t => {
+  let token = lexer.token^;
+  let error = () => 
+    Error.API.syntaxError(
+      lexer.source,
+      token.start,
+      "Expected \"" ++ value ++ "\", found " ++ Type.Token.desc(token)
+    );
+  
+  switch(token.kind == Type.Token.Name) {
+  | true => {
+    switch(token.value) {
+    | Some(v) => {
+      switch(v == value) {
+      | true => {
+        ignore(Lexer.advance(lexer))
+        token;
+      }
+      | false => error()
+      }
+    }
+    | None => error()
+    }
+  }
+  | false => error()
   }
 };
 
@@ -47,19 +78,10 @@ let expectOptionalToken = (
 let expectOptionalKeyword = (
   lexer: Lexer.t,
   value: string
-) => {
-  let token = lexer.token^;
-  switch(token.kind == Type.Token.Name) {
-  | true => {
-    switch(token.value) {
-    | Some(value) => {
-      ignore(Lexer.advance(lexer));
-      Some(token);
-    }
-    | None => None;
-    }
-  }
-  | false => None;
+): option(Type.Token.t) => {
+  switch(expectKeyword(lexer, value)) {
+  | token => Some(token)
+  | exception _ => None
   }
 };
 
@@ -489,7 +511,9 @@ and parseFragment = (
   let start = lexer.token^;
   ignore(expectToken(lexer, Type.Token.Spread));
 
-  switch(expectOptionalKeyword(lexer, "on"), peek(lexer, Type.Token.Name)) {
+  let hasTypeCondition = expectOptionalKeyword(lexer, "on");
+  let peekName = peek(lexer, Type.Token.Name);
+  switch(hasTypeCondition, peekName) {
   | (None, true) => {
     let name = parseFragmentName(lexer);
     let directives = parseDirectives(lexer, false);
@@ -499,23 +523,17 @@ and parseFragment = (
       directives
     )
   }
-  | (Some(_keyword), _) => {
-    let namedType = parseNamedType(lexer);
+  | (_, _) => {
+    let typeCondition = switch(hasTypeCondition) {
+    | Some(_v) => Some(parseNamedType(lexer))
+    | None => None
+    };
     let directives = parseDirectives(lexer, false);
     let selectionSet = parseSelectionSet(lexer);
+
     InlineFragmentNode(
       loc(lexer, start),
-      Some(namedType),
-      directives,
-      selectionSet
-    )
-  }
-  | (None, false) => {
-    let directives = parseDirectives(lexer, false);
-    let selectionSet = parseSelectionSet(lexer);
-    InlineFragmentNode(
-      loc(lexer, start),
-      None,
+      typeCondition,
       directives,
       selectionSet
     )
@@ -669,6 +687,42 @@ let parseOperationDefinition = (
 };
 
 /**
+ * FragmentDefinition :
+ *   - fragment FragmentName on TypeCondition Directives? SelectionSet
+ *
+ * TypeCondition : NamedType
+ * 
+ * Experimental support for defining variables within fragments changes
+ * the grammar of FragmentDefinition:
+ *   - fragment FragmentName VariableDefinitions? on TypeCondition Directives? SelectionSet
+ */
+let parseFragmentDefinition = (
+  lexer: Lexer.t
+): Type.Ast.fragmentDefinitionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "fragment"));
+
+  let name = parseFragmentName(lexer);
+  let variableDefinitions = switch(lexer.options.experimentalFragmentVariables) {
+  | true => parseVariableDefinitions(lexer)
+  | false => [||]
+  };
+  ignore(expectKeyword(lexer, "on"));
+  let typeCondition = parseNamedType(lexer);
+  let directives = parseDirectives(lexer, false);
+  let selectionSet = parseSelectionSet(lexer);
+
+  {
+    name,
+    variableDefinitions,
+    typeCondition,
+    directives,
+    selectionSet,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
  * ExecutableDefinition :
  *   - OperationDefinition
  *   - FragmentDefinition
@@ -683,10 +737,8 @@ let parseExecutableDefinition = (
       switch(v) {
       | "query" | "mutation" | "subscription"
         => Type.Ast.OperationDefinitionNode(parseOperationDefinition(lexer))
-      /*
       | "fragment"
-        => parseFragmentDefinition(lexer)
-      */
+        => Type.Ast.FragmentDefinitionNode(parseFragmentDefinition(lexer))
       | _ => unexpected(lexer)
       }
     }
