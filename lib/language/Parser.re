@@ -155,20 +155,6 @@ let loc = (
   source: lexer.source,
 };
 
-/**
- * NOTE: In some functions like parseDirectives or parseArguments, 
- * when there is no item in the list, we should return None rather than 
- * empty array. To solve that problem, this original function has been added. 
- */
-let optionizeArray = (
-  a: array('a)
-): option(array('a)) => {
-  switch(Array.length(a)) {
-  | 0 => None
-  | _ => Some(a)
-  }
-};
-
 // Implements the parsing rules in the Document section.
 
 /**
@@ -178,9 +164,11 @@ let parseName = (
   lexer: Lexer.t
 ): Type.Ast.nameNode => {
   let token = expectToken(lexer, Type.Token.Name);
+  let value = Type.Token.unwrapValue(token);
+
   {
     loc: loc(lexer, token),
-    value: Type.Token.unwrapValue(token),
+    value,
   }
 };
 
@@ -191,9 +179,10 @@ let parseNamedType = (
   lexer: Lexer.t
 ): Type.Ast.namedTypeNode => {
   let start = lexer.token^;
+  let name = parseName(lexer);
 
   {
-    name: parseName(lexer),
+    name,
     loc: loc(lexer, start),
   }    
 };
@@ -219,9 +208,10 @@ let parseVariable = (
 ): Type.Ast.variableNode => {
   let start = lexer.token^;
   ignore(expectToken(lexer, Type.Token.Dollar));
+  let name = parseName(lexer);
 
   {
-    name: parseName(lexer),
+    name,
     loc: loc(lexer, start),
   };
 };
@@ -266,10 +256,11 @@ and parseObjectField = (
   let start = lexer.token^;
   let name = parseName(lexer);
   ignore(expectToken(lexer, Type.Token.Colon));
+  let value = parseValueLiteral(lexer, isConst);
 
   {
     name,
-    value: parseValueLiteral(lexer, isConst),
+    value,
     loc: loc(lexer, start),
   }
 }
@@ -320,11 +311,11 @@ and parseValueLiteral = (
   | Type.Token.BraceLeft => parseObject(lexer, isConst)
   | Type.Token.Int => {
     ignore(Lexer.advance(lexer));
-    IntValueNode(loc(lexer, token), Type.Token.unwrapValue(token))
+    IntValueNode(loc(lexer, token), int_of_string(Type.Token.unwrapValue(token)))
   }
   | Type.Token.Float => {
     ignore(Lexer.advance(lexer));
-    FloatValueNode(loc(lexer, token), Type.Token.unwrapValue(token))
+    FloatValueNode(loc(lexer, token), float_of_string(Type.Token.unwrapValue(token)))
   }
   | Type.Token.String | Type.Token.BlockString => parseStringLiteral(lexer)
   | Type.Token.Name => {
@@ -358,10 +349,11 @@ let parseArgument = (
   let start = lexer.token^;
   let name = parseName(lexer);
   ignore(expectToken(lexer, Type.Token.Colon));
+  let value = parseValueLiteral(lexer, false);
 
   {
     name,
-    value: parseValueLiteral(lexer, false),
+    value,
     loc: loc(lexer, start),
   }
 };
@@ -372,10 +364,11 @@ let parseConstArgument = (
   let start = lexer.token^;
   let name = parseName(lexer);
   ignore(expectToken(lexer, Type.Token.Colon));
-  
+  let value = parseConstValue(lexer);
+
   {
     name,
-    value: parseConstValue(lexer),
+    value,
     loc: loc(lexer, start),
   }
 };
@@ -386,14 +379,12 @@ let parseConstArgument = (
 let parseArguments = (
   lexer: Lexer.t,
   isConst: bool
-): option(array(Type.Ast.argumentNode)) => {
+): array(Type.Ast.argumentNode) => {
   let item = isConst ? parseConstArgument : parseArgument;
   
-  optionizeArray(
-    peek(lexer, Type.Token.ParenLeft)
-    ? many(lexer, Type.Token.ParenLeft, item, Type.Token.ParenRight)
-    : [||]
-  )
+  peek(lexer, Type.Token.ParenLeft)
+  ? many(lexer, Type.Token.ParenLeft, item, Type.Token.ParenRight)
+  : [||]
 };
 
 /**
@@ -405,10 +396,12 @@ let parseDirective = (
 ): Type.Ast.directiveNode => {
   let start = lexer.token^;
   ignore(expectToken(lexer, Type.Token.At));
+  let name = parseName(lexer);
+  let arguments = parseArguments(lexer, isConst);
 
   {
-    name: parseName(lexer),
-    arguments: parseArguments(lexer, isConst),
+    name,
+    arguments,
     loc: loc(lexer, start),
   }
 };
@@ -419,7 +412,7 @@ let parseDirective = (
 let parseDirectives = (
   lexer: Lexer.t,
   isConst: bool
-): option(array(Type.Ast.directiveNode)) => {
+): array(Type.Ast.directiveNode) => {
   let rec parseDirectivesInternal = (directives) => {
     switch(peek(lexer, Type.Token.At)) {
     | true => parseDirectivesInternal(
@@ -429,9 +422,7 @@ let parseDirectives = (
     }
   };
 
-  optionizeArray(
-    parseDirectivesInternal([||])
-  );
+  parseDirectivesInternal([||])
 };
 
 /**
@@ -457,16 +448,20 @@ let rec parseField = (
   | None => nameOrAlias
   };
 
+  let arguments = parseArguments(lexer, false);
+  let directives = parseDirectives(lexer, false);
+  let selectionSet = peek(lexer, Type.Token.BraceLeft) 
+    ? Some(parseSelectionSet(lexer))
+    : None;
+
   Type.Ast.FieldNode(
     loc(lexer, start),
     alias,
     name,
-    parseArguments(lexer, false),
-    parseDirectives(lexer, false),
-    peek(lexer, Type.Token.BraceLeft) 
-    ? Some(parseSelectionSet(lexer))
-    : None
-  )
+    arguments,
+    directives,
+    selectionSet
+  );
 }
 
 /**
@@ -495,23 +490,36 @@ and parseFragment = (
   ignore(expectToken(lexer, Type.Token.Spread));
 
   switch(expectOptionalKeyword(lexer, "on"), peek(lexer, Type.Token.Name)) {
-  | (None, true) => FragmentSpreadNode(
-    loc(lexer, start),
-    parseFragmentName(lexer),
-    parseDirectives(lexer, false)
-  )
-  | (Some(_keyword), _) => InlineFragmentNode(
-    loc(lexer, start),
-    Some(parseNamedType(lexer)),
-    parseDirectives(lexer, false),
-    parseSelectionSet(lexer)
-  )
-  | (None, false) => InlineFragmentNode(
-    loc(lexer, start),
-    None,
-    parseDirectives(lexer, false),
-    parseSelectionSet(lexer)
-  )
+  | (None, true) => {
+    let name = parseFragmentName(lexer);
+    let directives = parseDirectives(lexer, false);
+    FragmentSpreadNode(
+      loc(lexer, start),
+      name,
+      directives
+    )
+  }
+  | (Some(_keyword), _) => {
+    let namedType = parseNamedType(lexer);
+    let directives = parseDirectives(lexer, false);
+    let selectionSet = parseSelectionSet(lexer);
+    InlineFragmentNode(
+      loc(lexer, start),
+      Some(namedType),
+      directives,
+      selectionSet
+    )
+  }
+  | (None, false) => {
+    let directives = parseDirectives(lexer, false);
+    let selectionSet = parseSelectionSet(lexer);
+    InlineFragmentNode(
+      loc(lexer, start),
+      None,
+      directives,
+      selectionSet
+    )
+  }
   }
 }
 
@@ -528,14 +536,15 @@ and parseSelectionSet = (
   lexer: Lexer.t
 ): Type.Ast.selectionSetNode => {
   let start = lexer.token^;
+  let selections = many(
+    lexer, 
+    Type.Token.BraceLeft, 
+    parseSelection, 
+    Type.Token.BraceRight
+  );
 
   {
-    selections: many(
-      lexer, 
-      Type.Token.BraceLeft, 
-      parseSelection, 
-      Type.Token.BraceRight
-    ),
+    selections,
     loc: loc(lexer, start),
   }
 };
@@ -597,15 +606,17 @@ let parseVariableDefinition = (
   let variable = parseVariable(lexer);
   ignore(expectToken(lexer, Type.Token.Colon));
   let type_ = parseTypeReference(lexer);
+  let defaultValue = switch(expectOptionalToken(lexer, Type.Token.Equals)) {
+    | Some(_) => Some(parseValueLiteral(lexer, true))
+    | None => None
+    };
+  let directives = parseDirectives(lexer, true);
 
   {
     variable,
     type_,
-    defaultValue: switch(expectOptionalToken(lexer, Type.Token.Equals)) {
-    | Some(_) => Some(parseValueLiteral(lexer, true))
-    | None => None
-    },
-    directives: parseDirectives(lexer, true),
+    defaultValue,
+    directives,
     loc: loc(lexer, start),
   }
 };
@@ -615,12 +626,10 @@ let parseVariableDefinition = (
  */
 let parseVariableDefinitions = (
   lexer: Lexer.t
-): option(array(Type.Ast.variableDefinitionNode)) => {
-  optionizeArray(
-    peek(lexer, Type.Token.ParenLeft)
-    ? many(lexer, Type.Token.ParenLeft, parseVariableDefinition, Type.Token.ParenRight)
-    : [||]
-  );
+): array(Type.Ast.variableDefinitionNode) => {
+  peek(lexer, Type.Token.ParenLeft)
+  ? many(lexer, Type.Token.ParenLeft, parseVariableDefinition, Type.Token.ParenRight)
+  : [||]
 };
 
 let parseOperationDefinition = (
@@ -631,8 +640,8 @@ let parseOperationDefinition = (
   | true => {
     operation: Query,
     name: None,
-    variableDefinitions: None,
-    directives: None,
+    variableDefinitions: [||],
+    directives: [||],
     selectionSet: parseSelectionSet(lexer),
     loc: loc(lexer, start)
   }
@@ -643,12 +652,16 @@ let parseOperationDefinition = (
       | true => Some(parseName(lexer))
       | false => None
       };
+    let variableDefinitions = parseVariableDefinitions(lexer);
+    let directives = parseDirectives(lexer, false);
+    let selectionSet = parseSelectionSet(lexer);
+
     {
       operation,
       name,
-      variableDefinitions: parseVariableDefinitions(lexer),
-      directives: parseDirectives(lexer, false),
-      selectionSet: parseSelectionSet(lexer),
+      variableDefinitions,
+      directives,
+      selectionSet,
       loc: loc(lexer, start),
     }
   }
@@ -744,7 +757,11 @@ let parseDocument = (
  * Given a GraphQL source, parses it into a Document.
  * Throws GraphQLError if a syntax error is encountered.
  *
- * NOTE: parse function in graphql-js is broken into 2 functions. 
+ * NOTE: 
+ * 1. parse function in graphql-js is broken into 2 functions. 
+ * Because you can call parse() with a simple string or a Source object. 
+ * 2. These functions don't check validity of arguments at runtime. 
+ * Because they're checked by compiler. 
  */
 let parseSource = (
   source: Util.Source.t,

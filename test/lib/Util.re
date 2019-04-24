@@ -27,3 +27,10 @@ let expectSyntaxError = (
     }
   })
 };
+
+let isNone = (v: option('a)) => {
+  switch(v) {
+  | Some(_a) => false
+  | None => true
+  };
+}

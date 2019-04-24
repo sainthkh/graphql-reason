@@ -33,8 +33,12 @@ type location = {
   source: Util.Source.t,
 };
 
-type node = 
-  | DocumentNode
+/**
+ * NOTE: In graphql-js, array fields like directives, arguments are optional. 
+ * But in graphql-reason, they're non-optional because when there is no value,
+ * we can simply show that with an empty array.
+ * With this, we can remove meaningless switches.
+ */
 
 type nameNode = {
   loc: location,
@@ -62,22 +66,30 @@ type variableNode = {
 
 type intValueNode = {
   loc: location,
-  value: string,
+  // NOTE: Changed from string to int.
+  // Because it is too tedious to convert it to int every time we use this.
+  value: int,
 };
 
 type floatValueNode = {
   loc: location,
-  value: string,
+  // NOTE: Changed from string to float.
+  // Because it is too tedious to convert it to float every time we use this.
+  value: float,
 };
 
 type stringValueNode = {
   loc: location,
   value: string,
+  // NOTE: In graphql-js, type is option(bool). 
+  // But I ignored option here because we don't need the third value. 
+  // In graphql-js, null/undefined isn't used for this value. 
+  block: bool,
 };
 
 type booleanValueNode = {
   loc: location,
-  value: string,
+  value: bool,
 };
 
 type nullValueNode = {
@@ -91,8 +103,8 @@ type enumValueNode = {
 
 type valueNode = 
   | VariableNode(location, variableNode)
-  | IntValueNode(location, string)
-  | FloatValueNode(location, string)
+  | IntValueNode(location, int)
+  | FloatValueNode(location, float)
   | StringValueNode(location, string, bool)
   | BooleanValueNode(location, bool)
   | NullValueNode(location)
@@ -106,6 +118,16 @@ and objectFieldNode = {
   value: valueNode,
 };
 
+type listValueNode = {
+  loc: location,
+  values: array(valueNode),
+};
+
+type objectValueNode = {
+  loc: location,
+  fields: array(objectFieldNode),
+};
+
 type argumentNode = {
   loc: location,
   name: nameNode,
@@ -115,7 +137,7 @@ type argumentNode = {
 type directiveNode = {
   loc: location,
   name: nameNode,
-  arguments: option(array(argumentNode)),
+  arguments: array(argumentNode),
 };
 
 type variableDefinitionNode = {
@@ -123,7 +145,7 @@ type variableDefinitionNode = {
   variable: variableNode,
   type_: typeNode,
   defaultValue: option(valueNode),
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type selectionSetNode = {
@@ -136,31 +158,53 @@ and selectionNode =
     location, 
     option(nameNode), // alias
     nameNode, 
-    option(array(argumentNode)), // arguments
-    option(array(directiveNode)), // directives
+    array(argumentNode), // arguments
+    array(directiveNode), // directives
     option(selectionSetNode)
   )
   | FragmentSpreadNode(
     location,
     nameNode,
-    option(array(directiveNode))
+    array(directiveNode)
   )
   | InlineFragmentNode(
     location,
     option(namedTypeNode),
-    option(array(directiveNode)),
+    array(directiveNode),
     selectionSetNode
   )
   ;
+
+type fieldNode = {
+  loc: location,
+  alias: option(nameNode),
+  name: nameNode,
+  arguments: array(argumentNode),
+  directives: array(directiveNode),
+  selectionSet: option(selectionSetNode),
+};
+
+type fragmentSpreadNode = {
+  loc: location,
+  name: nameNode,
+  directives: array(directiveNode),
+};
+
+type inlineFragmentNode = {
+  loc: location,
+  typeCondition: option(namedTypeNode),
+  directives: array(directiveNode),
+  selectionSet: selectionSetNode,
+};
 
 type fragmentDefinitionNode = {
   loc: location,
   name: nameNode,
   // Note: fragment variable definitions are experimental and may be changed
   // or removed in the future.
-  variableDefinitions: option(array(variableDefinitionNode)),
+  variableDefinitions: array(variableDefinitionNode),
   typeCondition: namedTypeNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   selectionSet: selectionSetNode,
 };
 
@@ -174,8 +218,8 @@ type operationDefinitionNode = {
   loc: location,
   operation: operationTypeNode,
   name: option(nameNode),
-  variableDefinitions: option(array(variableDefinitionNode)),
-  directives: option(array(directiveNode)),
+  variableDefinitions: array(variableDefinitionNode),
+  directives: array(directiveNode),
   selectionSet: selectionSetNode,
 };
 
@@ -192,7 +236,7 @@ type operationTypeDefinitionNode = {
 
 type schemaDefinitionNode = {
   loc: location,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   operationTypes: array(operationTypeDefinitionNode),
 };
 
@@ -200,7 +244,7 @@ type scalarTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type inputValueDefinitionNode = {
@@ -209,7 +253,7 @@ type inputValueDefinitionNode = {
   name: nameNode,
   type_: typeNode,
   defaultValue: option(valueNode),
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type fieldDefinitionNode = {
@@ -218,7 +262,7 @@ type fieldDefinitionNode = {
   name: nameNode,
   arguments: option(array(inputValueDefinitionNode)),
   type_: typeNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type objectTypeDefinitionNode = {
@@ -226,7 +270,7 @@ type objectTypeDefinitionNode = {
   description: option(stringValueNode),
   name: nameNode,
   interfaces: option(array(namedTypeNode)),
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(fieldDefinitionNode)),
 };
 
@@ -234,7 +278,7 @@ type interfaceTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(fieldDefinitionNode)),
 };
 
@@ -242,7 +286,7 @@ type unionTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   types: option(array(namedTypeNode)),
 };
 
@@ -250,14 +294,14 @@ type enumValueDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type enumTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   values: option(array(enumValueDefinitionNode)),
 };
 
@@ -265,7 +309,7 @@ type inputObjectTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(inputValueDefinitionNode)),
 };
 
@@ -294,49 +338,49 @@ type typeSystemDefinitionNode =
 
 type schemaExtensionNode = {
   loc: location,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   operationTypes: option(array(operationTypeDefinitionNode)),
 };
 
 type scalarTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
 };
 
 type objectTypeExtensionNode = {
   loc: location,
   name: nameNode,
   interfaces: option(array(namedTypeNode)),
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(fieldDefinitionNode)),
 };
 
 type interfaceTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(fieldDefinitionNode)),
 };
 
 type unionTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   types: option(array(namedTypeNode)),
 };
 
 type enumTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   values: option(array(enumValueDefinitionNode)),
 };
 
 type inputObjectTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  directives: option(array(directiveNode)),
+  directives: array(directiveNode),
   fields: option(array(inputValueDefinitionNode)),
 };
 
@@ -364,3 +408,160 @@ type documentNode = {
   loc: location,
   definitions: array(definitionNode),
 };
+
+/**
+ * NOTE: Unwrap exists to remove switchs. 
+ */
+exception UnwrapFailed;
+
+let unwrap: option('a) => 'a = o => 
+  switch(o) {
+  | Some(v) => v
+  | None => raise(UnwrapFailed)
+  }
+  ;
+
+/**
+ * NOTE: The functions below are utility functions to cast a node
+ * to a certain type at once. 
+ * They're created to remove excessive switch statements. 
+ */
+exception CastFailed(string);
+
+let toExecutableDefinitionNode = definitionNode => 
+  switch(definitionNode) {
+  | ExecutableDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an ExecutableDefinitionNode"))
+  }
+  ;
+
+let toOperationDefinitionNode = executableDefinitionNode => 
+  switch(executableDefinitionNode) {
+  | OperationDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an OperationDefinitionNode"))
+  }
+  ;
+
+let toFieldNode = selectionNode => 
+  switch(selectionNode) {
+  | FieldNode(loc, alias, name, arguments, directives, selectionSet) => {
+    loc,
+    alias,
+    name,
+    arguments,
+    directives,
+    selectionSet,
+  }
+  | _ => raise(CastFailed("It's not a FieldNode"))
+  }
+  ;
+
+let toFragmentSpreadNode = selectionNode => 
+  switch(selectionNode) {
+  | FragmentSpreadNode(loc, name, directives) => {
+    loc,
+    name,
+    directives
+  }
+  | _ => raise(CastFailed("It's not a FragmentSpreadNode"))
+  }
+  ;
+
+let toInlineFragmentNode = selectionNode => 
+  switch(selectionNode) {
+  | InlineFragmentNode(loc, typeCondition, directives, selectionSet) => {
+    loc,
+    typeCondition,
+    directives,
+    selectionSet,
+  }
+  | _ => raise(CastFailed("It's not an InlineFragmentNode"))
+  }
+  ;
+
+let toVariableNode = valueNode => 
+  switch(valueNode) {
+  | VariableNode(_loc, variableNode) => variableNode
+  | _ => raise(CastFailed("It's not a VariableNode"))
+  }
+  ;
+
+let toIntValueNode: valueNode => intValueNode = valueNode => 
+  switch(valueNode) {
+  | IntValueNode(loc, value) => {
+    loc,
+    value,
+  }
+  | _ => raise(CastFailed("It's not an IntValueNode"))
+  }
+  ;
+
+let toFloatValueNode: valueNode => floatValueNode = valueNode => 
+  switch(valueNode) {
+  | FloatValueNode(loc, value) => {
+    loc,
+    value,
+  }
+  | _ => raise(CastFailed("It's not a FloatValueNode"))
+  }
+  ;
+
+let toStringValueNode: valueNode => stringValueNode = valueNode => 
+  switch(valueNode) {
+  | StringValueNode(loc, value, block) => {
+    loc,
+    value,
+    block,
+  }
+  | _ => raise(CastFailed("It's not a StringValueNode"))
+  }
+  ;
+
+let toBooleanValueNode: valueNode => booleanValueNode = valueNode => 
+  switch(valueNode) {
+  | BooleanValueNode(loc, value) => {
+    loc,
+    value,
+  }
+  | _ => raise(CastFailed("It's not a BooleanValueNode"))
+  }
+  ;
+
+let toNullValueNode: valueNode => nullValueNode = valueNode => 
+  switch(valueNode) {
+  | NullValueNode(loc) => {
+    loc: loc,
+  }
+  | _ => raise(CastFailed("It's not a NullValueNode"))
+  }
+  ;
+
+let toEnumValueNode: valueNode => enumValueNode = valueNode => 
+  switch(valueNode) {
+  | EnumValueNode(loc, value) => {
+    loc,
+    value,
+  }
+  | _ => raise(CastFailed("It's not an EnumValueNode"))
+  }
+  ;
+
+let toListValueNode: valueNode => listValueNode = valueNode => 
+  switch(valueNode) {
+  | ListValueNode(loc, values) => {
+    loc,
+    values,
+  }
+  | _ => raise(CastFailed("It's not a ListValueNode"))
+  }
+  ;
+
+let toObjectValueNode: valueNode => objectValueNode = valueNode => 
+  switch(valueNode) {
+  | ObjectValueNode(loc, fields) => {
+    loc,
+    fields,
+  }
+  | _ => raise(CastFailed("It's not an ObjectValueNode"))
+  }
+  ;
