@@ -705,7 +705,20 @@ let parseFragmentDefinition = (
   let name = parseFragmentName(lexer);
   let variableDefinitions = switch(lexer.options.experimentalFragmentVariables) {
   | true => parseVariableDefinitions(lexer)
-  | false => [||]
+  | false => {
+    /** 
+     * NOTE: In graphql-js, it's just skipped when experimentalFragmentVariables is false. 
+     * But I think showing the users helpful message is better idea. 
+     */ 
+    switch(peek(lexer, Type.Token.ParenLeft)){
+    | true => Error.API.syntaxError(
+      lexer.source,
+      lexer.token^.start,
+      "Fragment variables are not allowed. If you want to use it, pass experimentalFragmentVariables option to parser"
+    );
+    | false => [||]
+    }
+  }
   };
   ignore(expectKeyword(lexer, "on"));
   let typeCondition = parseNamedType(lexer);

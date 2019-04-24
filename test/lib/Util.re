@@ -19,8 +19,10 @@ let expectSyntaxError = (
       | Some(locations) => {
         expect.int(Array.length(locations)).toBe(1);
         let loc = locations[0];
-        expect.int(loc.line).toBe(line);
-        expect.int(loc.column).toBe(col);
+        expect.string("Line: " ++ string_of_int(loc.line))
+          .toEqual("Line: " ++ string_of_int(line));
+        expect.string("Col: " ++ string_of_int(loc.column))
+          .toEqual("Col: " ++ string_of_int(col));
       }
       }
     }

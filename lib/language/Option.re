@@ -2,13 +2,6 @@
 NOTE: In graphql-js, the content below is in /language/parser.js. But to avoid cicular dependency in ReasonML, it is moved here. 
 */
 
-let noneToFalse: option(bool) => bool = v => 
-  switch(v) {
-  | Some(v) => v
-  | None => false
-  }
-  ;
-
 /**
  * Configuration options to control parser behavior
  */
@@ -65,14 +58,14 @@ module Parse {
 
   let make = (
     //~noLocation: option(bool) =?,
-    ~allowLegacySDLEmptyFields: option(bool) =?,
-    ~allowLegacySDLImplementsInterfaces: option(bool) =?,
-    ~experimentalFragmentVariables: option(bool) =?,
+    ~allowLegacySDLEmptyFields: bool = false,
+    ~allowLegacySDLImplementsInterfaces: bool = false,
+    ~experimentalFragmentVariables: bool = false,
     ()
   ) => {
     //noLocation,
-    allowLegacySDLEmptyFields: noneToFalse(allowLegacySDLEmptyFields),
-    allowLegacySDLImplementsInterfaces: noneToFalse(allowLegacySDLImplementsInterfaces),
-    experimentalFragmentVariables: noneToFalse(experimentalFragmentVariables),
+    allowLegacySDLEmptyFields,
+    allowLegacySDLImplementsInterfaces,
+    experimentalFragmentVariables,
   }
 }

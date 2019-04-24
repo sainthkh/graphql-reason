@@ -47,22 +47,13 @@ describe("Parser", ({describe, test}) => {
     parseSucceeded("parse directives", "query Foo($x: Boolean = false @bar) { field }");
   });
 
-  /*
-  NOTE: commented out until fragment is implemented. 
-  it('does not accept fragments named "on"', () => {
-    expectSyntaxError('fragment on on on { on }', 'Unexpected Name "on"', {
-      line: 1,
-      column: 10,
-    });
+  describe("does not accept fragments named \"on\"", ({test}) => {
+    expectSyntaxError("fragment on on on { on }", "Unexpected Name \"on\"", 1, 10);
   });
 
-  it('does not accept fragments spread of "on"', () => {
-    expectSyntaxError('{ ...on }', 'Expected Name, found }', {
-      line: 1,
-      column: 9,
-    });
+  describe("does not accept fragments spread of \"on\"", ({test}) => {
+    expectSyntaxError("{ ...on }", "Expected Name, found }", 1, 9);
   });
-  */
 
   test("parses multi-byte characters", ({expect}) => {
     // Note: \u0A0A could be naively interpreted as two line-feed chars.
@@ -90,21 +81,24 @@ describe("Parser", ({describe, test}) => {
   it('parses kitchen sink', () => {
     expect(() => parse(kitchenSinkQuery)).to.not.throw();
   });
+  */
 
-  it('allows non-keywords anywhere a Name is allowed', () => {
-    const nonKeywords = [
-      'on',
-      'fragment',
-      'query',
-      'mutation',
-      'subscription',
-      'true',
-      'false',
+  describe("allows non-keywords anywhere a Name is allowed", ({test}) => {
+    let nonKeywords = [
+      "on",
+      "fragment",
+      "query",
+      "mutation",
+      "subscription",
+      "true",
+      "false",
     ];
-    for (const keyword of nonKeywords) {
-      // You can't define or reference a fragment named `on`.
-      const fragmentName = keyword !== 'on' ? keyword : 'a';
-      const document = `
+
+    nonKeywords
+    |> List.iter(keyword => {
+      let fragmentName = keyword != "on" ? keyword : "a";
+      /* NOTE: The result of code below is like this in JavaScript.
+      `
         query ${keyword} {
           ... ${fragmentName}
           ... on ${keyword} { field }
@@ -113,12 +107,22 @@ describe("Parser", ({describe, test}) => {
           ${keyword}(${keyword}: $${keyword})
             @${keyword}(${keyword}: ${keyword})
         }
-      `;
-
-      expect(() => parse(document)).to.not.throw();
-    }
+      `
+      As ReasonML doesn't have backtick string interpolation, I had to use ++.
+      (FYI, {j||j} interpolation is for BuckleScript, not native ReasonML project.)
+      */
+      let doc = "\n" ++
+        "query " ++ keyword ++ " {\n" ++
+        " ... " ++ fragmentName ++ "\n" ++
+        " ... " ++ " on " ++ keyword ++ "{ field }\n" ++
+        "}\n" ++
+        "fragment " ++ fragmentName ++ " on Type {\n" ++
+        "  " ++ keyword ++ "(" ++ keyword ++ ": $" ++ keyword ++ ")\n" ++
+        "    " ++ "@" ++ keyword ++ "(" ++ keyword ++": " ++ keyword ++ ")\n" ++
+        "}";
+      parseSucceeded(keyword ++ " parse success", doc);
+    })
   });
-  */
 
   describe("parses mutation/subscription", ({test}) => {
     parseSucceeded("parses anonymous mutation operations", {|
@@ -213,16 +217,15 @@ describe("Parser", ({describe, test}) => {
     expect.bool(Test.Util.isNone(name.selectionSet)).toBe(true);
   });
 
-  /* NOTE: Commented out until fragment is finished. 
   describe("Experimental: allows parsing fragment defined variables", ({test}) => {
-    const document = 'fragment a($v: Boolean = false) on t { f(v: $v) }';
+    let document = "fragment a($v: Boolean = false) on t { f(v: $v) }";
 
-    expect(() =>
-      parse(document, { experimentalFragmentVariables: true }),
-    ).to.not.throw();
-    expect(() => parse(document)).to.throw('Syntax Error');
-  });  
-  */
+    ignore(Language.Parser.parse(document, ~options=?Some(Language.Option.Parse.make(
+      ~experimentalFragmentVariables=true,
+      ()
+    )), ()));
+    expectSyntaxError(document, "Fragment variables are not allowed. If you want to use it, pass experimentalFragmentVariables option to parser", 1, 11);
+  });
 
   test("contains references to source", ({expect}) => {
     let source = Util.Source.make(~body="{ id }", ());
