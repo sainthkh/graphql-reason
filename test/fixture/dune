@@ -1,0 +1,4 @@
+(library
+   (name Fixture)
+   (public_name graphql-reason.test-fixture)
+)

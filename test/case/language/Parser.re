@@ -76,12 +76,9 @@ describe("Parser", ({describe, test}) => {
     expect.string(value).toEqual("Has a \xe0\xa8\x8a multi-byte character.");
   });
 
-  /*
-  NOTE: commented out until I finish other parser functions. 
-  it('parses kitchen sink', () => {
-    expect(() => parse(kitchenSinkQuery)).to.not.throw();
+  describe("parses kitchen sink", ({test}) => {
+    parseSucceeded("kitchen sink query", Fixture.GraphQLCode.query);
   });
-  */
 
   describe("allows non-keywords anywhere a Name is allowed", ({test}) => {
     let nonKeywords = [
