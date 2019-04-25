@@ -764,6 +764,784 @@ let parseExecutableDefinition = (
   }
 };
 
+ 
+// Implements the parsing rules in the Type Definition section.
+
+let peekDescription = (
+  lexer: Lexer.t
+): bool => {
+  peek(lexer, Type.Token.String) || peek(lexer, Type.Token.BlockString);
+};
+
+/**
+ * Description : StringValue
+ */
+let parseDescription = (
+  lexer: Lexer.t
+): option(Type.Ast.stringValueNode) => {
+  switch(peekDescription(lexer)) {
+  | true => Some(parseStringLiteral(lexer) |> Type.Ast.toStringValueNode)
+  | false => None
+  };
+};
+
+/**
+ * OperationTypeDefinition : OperationType : NamedType
+ */
+let parseOperationTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.operationTypeDefinitionNode => {
+  let start = lexer.token^;
+  let operation = parseOperationType(lexer);
+  ignore(expectToken(lexer, Type.Token.Colon));
+  let type_ = parseNamedType(lexer);
+
+  {
+    operation,
+    type_,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * SchemaDefinition : schema Directives[Const]? { OperationTypeDefinition+ }
+ */
+let parseSchemaDefinition = (
+  lexer: Lexer.t
+): Type.Ast.schemaDefinitionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "schema"));
+  let directives = parseDirectives(lexer, true);
+  let operationTypes = many(
+    lexer,
+    Type.Token.BraceLeft,
+    parseOperationTypeDefinition,
+    Type.Token.BraceRight
+  );
+
+  {
+    directives,
+    operationTypes,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * ScalarTypeDefinition : Description? scalar Name Directives[Const]?
+ */
+let parseScalarTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.scalarTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "scalar"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+
+  {
+    description,
+    name, 
+    directives, 
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * ImplementsInterfaces :
+ *   - implements `&`? NamedType
+ *   - ImplementsInterfaces & NamedType
+ */
+let parseImplementsInterfaces = (
+  lexer: Lexer.t
+): array(Type.Ast.namedTypeNode) => {
+  switch(expectOptionalKeyword(lexer, "implements")) {
+  | Some(_) => {
+    // optional leading ampersand
+    ignore(expectOptionalToken(lexer, Type.Token.Amp));
+
+    let rec parseImplementsInterfacesInternal = types => {
+      let n = Array.append(types, [|parseNamedType(lexer)|]);
+
+      let token = expectOptionalToken(lexer, Type.Token.Amp);
+      let oldSDL = lexer.options.allowLegacySDLImplementsInterfaces &&
+        peek(lexer, Type.Token.Name);
+      
+      switch(token, oldSDL) {
+      | (Some(_), _) | (_, true) => parseImplementsInterfacesInternal(n);
+      | _ => n;
+      }
+    };
+
+    parseImplementsInterfacesInternal([||]);
+  }
+  | None => [||]
+  }
+};
+
+/**
+ * InputValueDefinition :
+ *   - Description? Name : Type DefaultValue? Directives[Const]?
+ */
+let parseInputValueDef = (
+  lexer: Lexer.t
+): Type.Ast.inputValueDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  let name = parseName(lexer);
+  ignore(expectToken(lexer, Type.Token.Colon));
+  let type_ = parseTypeReference(lexer);
+  let defaultValue = switch(expectOptionalToken(lexer, Type.Token.Equals)) {
+  | Some(_) => Some(parseConstValue(lexer));
+  | None => None
+  };
+  let directives = parseDirectives(lexer, true);
+
+  {
+    description,
+    name,
+    type_,
+    defaultValue,
+    directives,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * ArgumentsDefinition : ( InputValueDefinition+ )
+ */
+let parseArgumentDefs = (
+  lexer: Lexer.t
+): array(Type.Ast.inputValueDefinitionNode) => {
+  peek(lexer, Type.Token.ParenLeft)
+  ? many(lexer, Type.Token.ParenLeft, parseInputValueDef, Type.Token.ParenRight)
+  : [||]
+};
+
+/**
+ * FieldDefinition :
+ *   - Description? Name ArgumentsDefinition? : Type Directives[Const]?
+ */
+let parseFieldDefinition = (
+  lexer: Lexer.t
+): Type.Ast.fieldDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  let name = parseName(lexer);
+  let arguments = parseArgumentDefs(lexer);
+  ignore(expectToken(lexer, Type.Token.Colon));
+  let type_ = parseTypeReference(lexer);
+  let directives = parseDirectives(lexer, true);
+
+  {
+    description,
+    name,
+    arguments,
+    type_,
+    directives,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * FieldsDefinition : { FieldDefinition+ }
+ */
+let parseFieldsDefinition = (
+  lexer: Lexer.t
+): array(Type.Ast.fieldDefinitionNode) => {
+  let isEmpty = lexer.options.allowLegacySDLEmptyFields &&
+    peek(lexer, Type.Token.BraceLeft) &&
+    Lexer.lookahead(lexer).kind == Type.Token.BraceRight;
+
+  switch(isEmpty) {
+  | true => {
+    ignore(Lexer.lookahead(lexer));
+    ignore(Lexer.lookahead(lexer));
+    [||]
+  }
+  | false => {
+    peek(lexer, Type.Token.BraceLeft)
+    ? many(lexer, Type.Token.BraceLeft, parseFieldDefinition, Type.Token.BraceRight)
+    : [||]
+  }
+  }
+};
+
+/**
+ * ObjectTypeDefinition :
+ *   Description?
+ *   type Name ImplementsInterfaces? Directives[Const]? FieldsDefinition?
+ */
+let parseObjectTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.objectTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "type"));
+  let name = parseName(lexer);
+  let interfaces = parseImplementsInterfaces(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseFieldsDefinition(lexer);
+
+  {
+    description,
+    name, 
+    interfaces,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * InterfaceTypeDefinition :
+ *   - Description? interface Name Directives[Const]? FieldsDefinition?
+ */
+let parseInterfaceTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.interfaceTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "interface"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseFieldsDefinition(lexer);
+
+  {
+    description,
+    name,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * UnionMemberTypes :
+ *   - = `|`? NamedType
+ *   - UnionMemberTypes | NamedType
+ */
+let parseUnionMemberTypes = (
+  lexer: Lexer.t
+): array(Type.Ast.namedTypeNode) => {
+  switch(expectOptionalToken(lexer, Type.Token.Equals)) {
+  | Some(_) => {
+    // optional leading pipe
+    ignore(expectOptionalToken(lexer, Type.Token.Pipe));
+
+    let rec parseUnionMemberTypesInternal = members => {
+      let n = Array.append(members, [|parseNamedType(lexer)|]);
+
+      switch(expectOptionalToken(lexer, Type.Token.Pipe)) {
+      | Some(_) => parseUnionMemberTypesInternal(n)
+      | None => n;
+      }
+    };
+
+    parseUnionMemberTypesInternal([||]);
+  }
+  | None => [||]
+  }
+};
+
+/**
+ * UnionTypeDefinition :
+ *   - Description? union Name Directives[Const]? UnionMemberTypes?
+ */
+let parseUnionTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.unionTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "union"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let types = parseUnionMemberTypes(lexer);
+
+  {
+    description,
+    name,
+    directives,
+    types,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * EnumValueDefinition : Description? EnumValue Directives[Const]?
+ *
+ * EnumValue : Name
+ */
+let parseEnumValueDefinition = (
+  lexer: Lexer.t
+): Type.Ast.enumValueDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+
+  {
+    description,
+    name,
+    directives,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * EnumValuesDefinition : { EnumValueDefinition+ }
+ */
+let parseEnumValuesDefinition = (
+  lexer: Lexer.t
+): array(Type.Ast.enumValueDefinitionNode) => {
+  peek(lexer, Type.Token.BraceLeft)
+  ? many(lexer, Type.Token.BraceLeft, parseEnumValueDefinition, Type.Token.BraceRight)
+  : [||]
+};
+
+/**
+ * EnumTypeDefinition :
+ *   - Description? enum Name Directives[Const]? EnumValuesDefinition?
+ */
+let parseEnumTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.enumTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "enum"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let values = parseEnumValuesDefinition(lexer);
+
+  {
+    description,
+    name,
+    directives,
+    values,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * InputFieldsDefinition : { InputValueDefinition+ }
+ */
+let parseInputFieldsDefinition = (
+  lexer: Lexer.t
+): array(Type.Ast.inputValueDefinitionNode) => {
+  peek(lexer, Type.Token.BraceLeft)
+  ? many(lexer, Type.Token.BraceLeft, parseInputValueDef, Type.Token.BraceRight)
+  : [||]
+};
+
+/**
+ * InputObjectTypeDefinition :
+ *   - Description? input Name Directives[Const]? InputFieldsDefinition?
+ */
+let parseInputObjectTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.inputObjectTypeDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "input"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseInputFieldsDefinition(lexer);
+
+  {
+    description,
+    name,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+};
+
+/** 
+ * TypeDefinition :
+ *   - ScalarTypeDefinition
+ *   - ObjectTypeDefinition
+ *   - InterfaceTypeDefinition
+ *   - UnionTypeDefinition
+ *   - EnumTypeDefinition
+ *   - InputObjectTypeDefinition
+ * 
+ * NOTE: In graphql-js, parseTypeSystemDefinition and parseTypeDefinition are 
+ * in the same function. But in our graphql-reason, it doesn't look good because
+ * one function cannot return 2 different types. 
+ */
+let parseTypeDefinition = (
+  lexer: Lexer.t
+): Type.Ast.typeDefinitionNode => {
+  let start = lexer.token^;
+
+  switch(Type.Token.unwrapValue(start)) {
+  | "scalar" => Type.Ast.ScalarTypeDefinitionNode(parseScalarTypeDefinition(lexer))
+  | "type" => Type.Ast.ObjectTypeDefinitionNode(parseObjectTypeDefinition(lexer))
+  | "interface" => Type.Ast.InterfaceTypeDefinitionNode(parseInterfaceTypeDefinition(lexer))
+  | "union" => Type.Ast.UnionTypeDefinitionNode(parseUnionTypeDefinition(lexer))
+  | "enum" => Type.Ast.EnumTypeDefinitionNode(parseEnumTypeDefinition(lexer))
+  | "input" => Type.Ast.InputObjectTypeDefinitionNode(parseInputObjectTypeDefinition(lexer))
+  | _ => unexpectedToken(lexer, start)
+  };
+};
+
+/*
+ * DirectiveLocation :
+ *   - ExecutableDirectiveLocation
+ *   - TypeSystemDirectiveLocation
+ *
+ * ExecutableDirectiveLocation : one of
+ *   `QUERY`
+ *   `MUTATION`
+ *   `SUBSCRIPTION`
+ *   `FIELD`
+ *   `FRAGMENT_DEFINITION`
+ *   `FRAGMENT_SPREAD`
+ *   `INLINE_FRAGMENT`
+ *
+ * TypeSystemDirectiveLocation : one of
+ *   `SCHEMA`
+ *   `SCALAR`
+ *   `OBJECT`
+ *   `FIELD_DEFINITION`
+ *   `ARGUMENT_DEFINITION`
+ *   `INTERFACE`
+ *   `UNION`
+ *   `ENUM`
+ *   `ENUM_VALUE`
+ *   `INPUT_OBJECT`
+ *   `INPUT_FIELD_DEFINITION`
+ */
+let parseDirectiveLocation = (
+  lexer: Lexer.t
+): Type.Ast.directiveLocationNode => {
+  let start = lexer.token^;
+  let name = parseName(lexer);
+
+  switch(Type.DirectiveLocation.t_of_string(name.value)) {
+  | exception Type.DirectiveLocation.UnexpectedLocation 
+    => unexpectedToken(lexer, start)
+  | t => {
+    locationType: t,
+    loc: name.loc,
+  }
+  }
+};
+
+/**
+ * DirectiveLocations :
+ *   - `|`? DirectiveLocation
+ *   - DirectiveLocations | DirectiveLocation
+ */
+let parseDirectiveLocations = (
+  lexer: Lexer.t
+): array(Type.Ast.directiveLocationNode) => {
+  // optional leading pipe
+  ignore(expectOptionalToken(lexer, Type.Token.Pipe));
+  
+  let rec parseDirectiveLocationsInternal = locations => {
+    let n = Array.append(locations, [|parseDirectiveLocation(lexer)|])
+
+    switch(expectOptionalToken(lexer, Type.Token.Pipe)) {
+    | Some(_) => parseDirectiveLocationsInternal(n)
+    | None => n
+    }
+  };
+
+  parseDirectiveLocationsInternal([||]);
+};
+
+/**
+ * DirectiveDefinition :
+ *   - Description? directive @ Name ArgumentsDefinition? on DirectiveLocations
+ */
+let parseDirectiveDefinition = (
+  lexer: Lexer.t
+): Type.Ast.directiveDefinitionNode => {
+  let start = lexer.token^;
+  let description = parseDescription(lexer);
+  ignore(expectKeyword(lexer, "directive"));
+  ignore(expectToken(lexer, Type.Token.At));
+  let name = parseName(lexer);
+  let arguments = parseArgumentDefs(lexer);
+  ignore(expectKeyword(lexer, "on"));
+  let locations = parseDirectiveLocations(lexer);
+
+  {
+    description,
+    name,
+    arguments,
+    locations,
+    loc: loc(lexer, start),
+  }
+};
+
+/**
+ * TypeSystemDefinition :
+ *   - SchemaDefinition
+ *   - TypeDefinition
+ *   - DirectiveDefinition
+ */
+let parseTypeSystemDefinition = (
+  lexer: Lexer.t
+): Type.Ast.typeSystemDefinitionNode => {
+  let keywordToken = peekDescription(lexer) 
+    ? lexer |> Lexer.lookahead
+    : lexer.token^;
+  
+  switch(keywordToken.kind) {
+  | Type.Token.Name => {
+    switch(Type.Token.unwrapValue(keywordToken)) {
+    | "schema" 
+      => Type.Ast.SchemaDefinitionNode(parseSchemaDefinition(lexer))
+    | "scalar" | "type" | "interface"
+    | "union" | "enum" | "input" 
+      => Type.Ast.TypeDefinitionNode(parseTypeDefinition(lexer))
+    | "directive" 
+      => Type.Ast.DirectiveDefinitionNode(parseDirectiveDefinition(lexer))
+    | _ => unexpectedToken(lexer, keywordToken)
+    }
+  }
+  | _ => unexpectedToken(lexer, keywordToken)
+  }
+};
+
+/**
+ * SchemaExtension :
+ *  - extend schema Directives[Const]? { OperationTypeDefinition+ }
+ *  - extend schema Directives[Const]
+ */
+let parseSchemaExtension = (
+  lexer: Lexer.t
+): Type.Ast.schemaExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "schema"));
+  let directives = parseDirectives(lexer, true);
+  let operationTypes = 
+    peek(lexer, Type.Token.BraceLeft)
+    ? many(lexer, Type.Token.BraceLeft, parseOperationTypeDefinition, Type.Token.BraceRight)
+    : [||]
+  
+  switch(Array.length(directives), Array.length(operationTypes)) {
+  | (0, 0) => unexpected(lexer)
+  | (_, _) => {
+    directives,
+    operationTypes,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * ScalarTypeExtension :
+ *   - extend scalar Name Directives[Const]
+ */
+let parseScalarTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.scalarTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "scalar"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  
+  switch(Array.length(directives)) {
+  | 0 => unexpected(lexer)
+  | _ => {
+    name,
+    directives,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * ObjectTypeExtension :
+ *  - extend type Name ImplementsInterfaces? Directives[Const]? FieldsDefinition
+ *  - extend type Name ImplementsInterfaces? Directives[Const]
+ *  - extend type Name ImplementsInterfaces
+ */
+let parseObjectTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.objectTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "type"));
+  let name = parseName(lexer);
+  let interfaces = parseImplementsInterfaces(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseFieldsDefinition(lexer);
+  
+  switch(Array.length(interfaces), Array.length(directives), Array.length(fields)) {
+  | (0, 0, 0) => unexpected(lexer)
+  | (_, _, _) => {
+    name, 
+    interfaces,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * InterfaceTypeExtension :
+ *   - extend interface Name Directives[Const]? FieldsDefinition
+ *   - extend interface Name Directives[Const]
+ */
+let parseInterfaceTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.interfaceTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "interface"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseFieldsDefinition(lexer);
+  
+  switch(Array.length(directives), Array.length(fields)) {
+  | (0, 0) => unexpected(lexer)
+  | (_, _) => {
+    name,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * UnionTypeExtension :
+ *   - extend union Name Directives[Const]? UnionMemberTypes
+ *   - extend union Name Directives[Const]
+ */
+let parseUnionTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.unionTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "union"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let types = parseUnionMemberTypes(lexer);
+  
+  switch(Array.length(directives), Array.length(types)) {
+  | (0, 0) => unexpected(lexer)
+  | (_, _) => {
+    name,
+    directives,
+    types,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * EnumTypeExtension :
+ *   - extend enum Name Directives[Const]? EnumValuesDefinition
+ *   - extend enum Name Directives[Const]
+ */
+let parseEnumTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.enumTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "enum"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let values = parseEnumValuesDefinition(lexer);
+  
+  switch(Array.length(directives), Array.length(values)) {
+  | (0, 0) => unexpected(lexer)
+  | (_, _) => {
+    name,
+    directives,
+    values,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * InputObjectTypeExtension :
+ *   - extend input Name Directives[Const]? InputFieldsDefinition
+ *   - extend input Name Directives[Const]
+ */
+let parseInputObjectTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.inputObjectTypeExtensionNode => {
+  let start = lexer.token^;
+  ignore(expectKeyword(lexer, "extend"));
+  ignore(expectKeyword(lexer, "input"));
+  let name = parseName(lexer);
+  let directives = parseDirectives(lexer, true);
+  let fields = parseInputFieldsDefinition(lexer);
+  
+  switch(Array.length(directives), Array.length(fields)) {
+  | (0, 0) => unexpected(lexer)
+  | (_, _) => {
+    name,
+    directives,
+    fields,
+    loc: loc(lexer, start),
+  }
+  }
+};
+
+/**
+ * TypeExtension :
+ *   - ScalarTypeExtension
+ *   - ObjectTypeExtension
+ *   - InterfaceTypeExtension
+ *   - UnionTypeExtension
+ *   - EnumTypeExtension
+ *   - InputObjectTypeExtension
+ *
+ * NOTE: Like parseTypeDefinition, parseTypeSystemExtension and parseTypeExtension are 
+ * in the same function in graphql-js. But in graphql-reason, it doesn't look good because
+ * one function cannot return 2 different types. 
+ */
+let parseTypeExtension = (
+  lexer: Lexer.t
+): Type.Ast.typeExtensionNode => {
+  let start = lexer.token^;
+
+  switch(Type.Token.unwrapValue(start)) {
+  | "scalar" => Type.Ast.ScalarTypeExtensionNode(parseScalarTypeExtension(lexer))
+  | "type" => Type.Ast.ObjectTypeExtensionNode(parseObjectTypeExtension(lexer))
+  | "interface" => Type.Ast.InterfaceTypeExtensionNode(parseInterfaceTypeExtension(lexer))
+  | "union" => Type.Ast.UnionTypeExtensionNode(parseUnionTypeExtension(lexer))
+  | "enum" => Type.Ast.EnumTypeExtensionNode(parseEnumTypeExtension(lexer))
+  | "input" => Type.Ast.InputObjectTypeExtensionNode(parseInputObjectTypeExtension(lexer))
+  | _ => unexpectedToken(lexer, start)
+  };
+};
+
+/**
+ * TypeSystemExtension :
+ *   - SchemaExtension
+ *   - TypeExtension
+ */
+let parseTypeSystemExtension = (
+  lexer: Lexer.t
+): Type.Ast.typeSystemExtensionNode => {
+  let keywordToken = lexer |> Lexer.lookahead;
+
+  switch(keywordToken.kind) {
+  | Type.Token.Name => {
+    switch(Type.Token.unwrapValue(keywordToken)){
+    | "schema" 
+      => Type.Ast.SchemaExtensionNode(parseSchemaExtension(lexer))
+    | "scalar" | "type" | "interface"
+    | "union" | "enum" | "input"
+      => Type.Ast.TypeExtensionNode(parseTypeExtension(lexer))
+    | _ => unexpectedToken(lexer, keywordToken)
+    }
+  }
+  | _ => unexpectedToken(lexer, keywordToken)
+  }
+};
+
 /**
  * Definition :
  *   - ExecutableDefinition
@@ -780,14 +1558,12 @@ let parseDefinition = (
     | Some(v) => {
       switch(v) {
       | "query" | "mutation" | "subscription" | "fragment" 
-        => Type.Ast.ExecutableDefinitionNode(parseExecutableDefinition(lexer));
-      /*
+        => Ast.ExecutableDefinitionNode(parseExecutableDefinition(lexer));
       | "schema" | "scalar" | "type" | "interface"
       | "union" | "enum" | "input" | "directive"
-        => parseTypeSystemDefinition(lexer);
+        => Ast.TypeSystemDefinitionNode(parseTypeSystemDefinition(lexer));
       | "extend"
-        => parseTypeSystemExtension(lexer);
-      */
+        => Ast.TypeSystemExtensionNode(parseTypeSystemExtension(lexer));
       | _ => unexpected(lexer);
       }
     }
@@ -796,10 +1572,8 @@ let parseDefinition = (
   }
   | Token.BraceLeft
     => Type.Ast.ExecutableDefinitionNode(parseExecutableDefinition(lexer));
-  /*
   | Token.String | Token.BlockString
-    => parseTypeSystemDefinition(lexer);
-  */
+    => Type.Ast.TypeSystemDefinitionNode(parseTypeSystemDefinition(lexer));
   | _ => unexpected(lexer);
   }
 };

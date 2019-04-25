@@ -260,7 +260,7 @@ type fieldDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  arguments: option(array(inputValueDefinitionNode)),
+  arguments: array(inputValueDefinitionNode),
   type_: typeNode,
   directives: array(directiveNode),
 };
@@ -269,9 +269,9 @@ type objectTypeDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  interfaces: option(array(namedTypeNode)),
+  interfaces: array(namedTypeNode),
   directives: array(directiveNode),
-  fields: option(array(fieldDefinitionNode)),
+  fields: array(fieldDefinitionNode),
 };
 
 type interfaceTypeDefinitionNode = {
@@ -279,7 +279,7 @@ type interfaceTypeDefinitionNode = {
   description: option(stringValueNode),
   name: nameNode,
   directives: array(directiveNode),
-  fields: option(array(fieldDefinitionNode)),
+  fields: array(fieldDefinitionNode),
 };
 
 type unionTypeDefinitionNode = {
@@ -287,7 +287,7 @@ type unionTypeDefinitionNode = {
   description: option(stringValueNode),
   name: nameNode,
   directives: array(directiveNode),
-  types: option(array(namedTypeNode)),
+  types: array(namedTypeNode),
 };
 
 type enumValueDefinitionNode = {
@@ -302,7 +302,7 @@ type enumTypeDefinitionNode = {
   description: option(stringValueNode),
   name: nameNode,
   directives: array(directiveNode),
-  values: option(array(enumValueDefinitionNode)),
+  values: array(enumValueDefinitionNode),
 };
 
 type inputObjectTypeDefinitionNode = {
@@ -310,7 +310,7 @@ type inputObjectTypeDefinitionNode = {
   description: option(stringValueNode),
   name: nameNode,
   directives: array(directiveNode),
-  fields: option(array(inputValueDefinitionNode)),
+  fields: array(inputValueDefinitionNode),
 };
 
 type typeDefinitionNode = 
@@ -322,13 +322,19 @@ type typeDefinitionNode =
   | InputObjectTypeDefinitionNode(inputObjectTypeDefinitionNode)
   ;
 
+// NOTE: This node is created to use DirectiveLocation type. 
+type directiveLocationNode = {
+  loc: location,
+  locationType: DirectiveLocation.t,
+};
+
 type directiveDefinitionNode = {
   loc: location,
   description: option(stringValueNode),
   name: nameNode,
-  arguments: option(array(inputValueDefinitionNode)),
-  locations: array(nameNode),
-}
+  arguments: array(inputValueDefinitionNode),
+  locations: array(directiveLocationNode),
+};
 
 type typeSystemDefinitionNode = 
   | SchemaDefinitionNode(schemaDefinitionNode)
@@ -339,7 +345,7 @@ type typeSystemDefinitionNode =
 type schemaExtensionNode = {
   loc: location,
   directives: array(directiveNode),
-  operationTypes: option(array(operationTypeDefinitionNode)),
+  operationTypes: array(operationTypeDefinitionNode),
 };
 
 type scalarTypeExtensionNode = {
@@ -351,37 +357,37 @@ type scalarTypeExtensionNode = {
 type objectTypeExtensionNode = {
   loc: location,
   name: nameNode,
-  interfaces: option(array(namedTypeNode)),
+  interfaces: array(namedTypeNode),
   directives: array(directiveNode),
-  fields: option(array(fieldDefinitionNode)),
+  fields: array(fieldDefinitionNode),
 };
 
 type interfaceTypeExtensionNode = {
   loc: location,
   name: nameNode,
   directives: array(directiveNode),
-  fields: option(array(fieldDefinitionNode)),
+  fields: array(fieldDefinitionNode),
 };
 
 type unionTypeExtensionNode = {
   loc: location,
   name: nameNode,
   directives: array(directiveNode),
-  types: option(array(namedTypeNode)),
+  types: array(namedTypeNode),
 };
 
 type enumTypeExtensionNode = {
   loc: location,
   name: nameNode,
   directives: array(directiveNode),
-  values: option(array(enumValueDefinitionNode)),
+  values: array(enumValueDefinitionNode),
 };
 
 type inputObjectTypeExtensionNode = {
   loc: location,
   name: nameNode,
   directives: array(directiveNode),
-  fields: option(array(inputValueDefinitionNode)),
+  fields: array(inputValueDefinitionNode),
 };
 
 type typeExtensionNode = 

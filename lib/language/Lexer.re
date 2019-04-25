@@ -705,28 +705,36 @@ let readToken: (t, Token.t) => Token.t = (lexer, prev) => {
 };
 
 /* NOTE: advance and lookahead are here because there is no "this" in ReasonML. */
-/* NOTE2: lookahead changed a lot to use recursive function and pattern matching */
-let rec lookahead: (t, Token.t) => Token.t = (lexer, token) => {
+let lookahead = lexer => {
+  let token = lexer.token^;
+
   switch(token.kind) {
   | Token.EOF => token
-  | _ => 
-    switch(token.next^) {
-    | Some(next) => next
-    | None => {
-      let next = readToken(lexer, token);
-      token.next := Some(next);
+  | _ => {
+    let rec lookaheadInternal = (lexer: t, token:Type.Token.t) => {
+      let next = switch(token.next^) {
+      | Some(t) => t
+      | None => {
+        let next = readToken(lexer, token);
+        token.next := Some(next);
+        next;
+      }
+      };
+
       switch(next.kind) {
-      | Token.Comment => lookahead(lexer, next);
+      | Token.Comment => lookaheadInternal(lexer, next);
       | _ => next;
       }
-    }
-    }
+    };
+
+    lookaheadInternal(lexer, token);
+  }
   }
 };
 
 let advance = lexer => {
   lexer.lastToken := lexer.token^;
-  let next = lookahead(lexer, lexer.token^);
+  let next = lookahead(lexer);
   lexer.token := next;
   
   next;
