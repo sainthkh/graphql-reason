@@ -50,13 +50,18 @@ type namedTypeNode = {
   name: nameNode,
 };
 
-type complexTypeNode = 
+type complexType = 
   | ListTypeNode(typeNode)
   | NonNullTypeNode(typeNode)
 
+and complexTypeNode = {
+  loc: location,
+  type_: complexType,
+}
+
 and typeNode = 
-  | NamedTypeNode(location, namedTypeNode)
-  | ComplexTypeNode(location, complexTypeNode)
+  | NamedTypeNode(namedTypeNode)
+  | ComplexTypeNode(complexTypeNode)
   ;
 
 type variableNode = {
@@ -416,7 +421,7 @@ type documentNode = {
 };
 
 /**
- * NOTE: Unwrap exists to remove switchs. 
+ * NOTE: Unwrap exists to remove switches. 
  */
 exception UnwrapFailed;
 
@@ -434,6 +439,8 @@ let unwrap: option('a) => 'a = o =>
  */
 exception CastFailed(string);
 
+// definitionNode
+
 let toExecutableDefinitionNode = definitionNode => 
   switch(definitionNode) {
   | ExecutableDefinitionNode(node) => node
@@ -441,12 +448,37 @@ let toExecutableDefinitionNode = definitionNode =>
   }
   ;
 
+let toTypeSystemDefinitionNode = definitionNode => 
+  switch(definitionNode) {
+  | TypeSystemDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a TypeSystemDefinitionNode"))
+  }
+  ;
+
+let toTypeSystemExtensionNode = definitionNode => 
+  switch(definitionNode) {
+  | TypeSystemExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not a TypeSystemExtensionNode"))
+  }
+  ;
+
+// executableDefinitionNode
+
 let toOperationDefinitionNode = executableDefinitionNode => 
   switch(executableDefinitionNode) {
   | OperationDefinitionNode(node) => node
   | _ => raise(CastFailed("It's not an OperationDefinitionNode"))
   }
   ;
+
+let toFragmentDefinitionNode = executableDefinitionNode => 
+  switch(executableDefinitionNode) {
+  | FragmentDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a FragmentDefinitionNode"))
+  }
+  ;
+
+// selectionNode
 
 let toFieldNode = selectionNode => 
   switch(selectionNode) {
@@ -484,6 +516,8 @@ let toInlineFragmentNode = selectionNode =>
   | _ => raise(CastFailed("It's not an InlineFragmentNode"))
   }
   ;
+
+// valueNode
 
 let toVariableNode = valueNode => 
   switch(valueNode) {
@@ -569,5 +603,162 @@ let toObjectValueNode: valueNode => objectValueNode = valueNode =>
     fields,
   }
   | _ => raise(CastFailed("It's not an ObjectValueNode"))
+  }
+  ;
+
+// TypeNodes
+
+let toListTypeNode = complexType => 
+  switch(complexType) {
+  | ListTypeNode(node) => node
+  | _ => raise(CastFailed("It's not a ListTypeNode"))
+  }
+  ;
+
+let toNonNullTypeNode = complexType => 
+  switch(complexType) {
+  | NonNullTypeNode(node) => node
+  | _ => raise(CastFailed("It's not a NonNullTypeNode"))
+  }
+  ;
+
+let toNamedTypeNode = typeNode => 
+  switch(typeNode) {
+  | NamedTypeNode(node) => node
+  | _ => raise(CastFailed("It's not a NamedTypeNode"))
+  }
+  ;
+
+let toComplexTypeNode = typeNode => 
+  switch(typeNode) {
+  | ComplexTypeNode(node) => node
+  | _ => raise(CastFailed("It's not a ComplexTypeNode"))
+  }
+  ;
+
+// typeSystemDefinitionNode
+
+let toSchemaDefinitionNode = typeSystemDefinitionNode => 
+  switch(typeSystemDefinitionNode) {
+  | SchemaDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a SchemaDefinitionNode"))
+  }
+  ;
+
+let toTypeDefinitionNode = typeSystemDefinitionNode => 
+  switch(typeSystemDefinitionNode) {
+  | TypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a TypeDefinitionNode"))
+  }
+  ;
+
+let toDirectiveDefinitionNode = typeSystemDefinitionNode => 
+  switch(typeSystemDefinitionNode) {
+  | DirectiveDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a DirectiveDefinitionNode"))
+  }
+  ;
+
+// typeDefinitionNode
+
+let toScalarTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | ScalarTypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a ScalarTypeDefinitionNode"))
+  }
+  ;
+
+let toObjectTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | ObjectTypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an ObjectTypeDefinitionNode"))
+  }
+  ;
+
+let toInterfaceTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | InterfaceTypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an InterfaceTypeDefinitionNode"))
+  }
+  ;
+
+let toUnionTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | UnionTypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not a UnionTypeDefinitionNode"))
+  }
+  ;
+
+let toEnumTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | EnumTypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an EnumTypeDefinitionNode"))
+  }
+  ;
+
+let toInputObjectTypeDefinitionNode = typeDefinitionNode => 
+  switch(typeDefinitionNode) {
+  | TypeDefinitionNode(node) => node
+  | _ => raise(CastFailed("It's not an InputObjectTypeDefinitionNode"))
+  }
+  ;
+
+// typeSystemExtensionNode
+
+let toSchemaExtensionNode = typeSystemExtensionNode => 
+  switch(typeSystemExtensionNode) {
+  | SchemaExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not a SchemaExtensionNode"))
+  }
+  ;
+
+let toTypeExtensionNode = typeSystemExtensionNode => 
+  switch(typeSystemExtensionNode) {
+  | TypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not a TypeExtensionNode"))
+  }
+  ;
+
+// typeExtensionNode
+
+let toScalarTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | ScalarTypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not a ScalarTypeExtensionNode"))
+  }
+  ;
+
+let toObjectTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | ObjectTypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not an ObjectTypeExtensionNode"))
+  }
+  ;
+
+let toInterfaceTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | InterfaceTypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not an InterfaceTypeExtensionNode"))
+  }
+  ;
+
+let toUnionTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | UnionTypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not a UnionTypeExtensionNode"))
+  }
+  ;
+
+let toEnumTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | EnumTypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not an EnumTypeExtensionNode"))
+  }
+  ;
+
+let toInputObjectTypeExtensionNode = typeExtensionNode => 
+  switch(typeExtensionNode) {
+  | TypeExtensionNode(node) => node
+  | _ => raise(CastFailed("It's not an InputObjectTypeExtensionNode"))
   }
   ;

@@ -594,20 +594,19 @@ let rec parseTypeReference = (
     let type_ = parseTypeReference(lexer);
     ignore(expectToken(lexer, Type.Token.BracketRight));
 
-    Type.Ast.(ComplexTypeNode(loc(lexer, start), ListTypeNode(type_)))
+    Type.Ast.ComplexTypeNode({
+      type_: ListTypeNode(type_),
+      loc: loc(lexer, start),
+    })
   }
   | None => {
     let type_ = parseNamedType(lexer);
     switch(expectOptionalToken(lexer, Type.Token.Bang)) {
-    | Some(_token) => {
-      Type.Ast.(
-        ComplexTypeNode(
-          loc(lexer, start), 
-          NonNullTypeNode(NamedTypeNode(type_.loc, type_))
-        )
-      )
-    }
-    | None => Type.Ast.NamedTypeNode(type_.loc, type_);
+    | Some(_token) => Type.Ast.ComplexTypeNode({
+      type_: NonNullTypeNode(NamedTypeNode(type_)),
+      loc: loc(lexer, start),
+    })
+    | None => Type.Ast.NamedTypeNode(type_);
     }
   }
   }
